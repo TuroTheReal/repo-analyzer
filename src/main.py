@@ -115,10 +115,18 @@ def main():
 				"total": len(scanner.alerts)
 			}
 
-		# Génération du rapport
-		console.print("[yellow]⏳ Génération du rapport...[/yellow]")
+		# Génération des rapports
+		console.print("[yellow]⏳ Génération des rapports...[/yellow]")
 		reporter = ReportGenerator()
-		report_path = reporter.generate_markdown(
+
+		# Rapport Markdown
+		md_path = reporter.generate_markdown(
+			owner, repo, repo_info, languages, contributors,
+			structure, dependencies, security_results
+		)
+
+		# Rapport HTML 🎨
+		html_path = reporter.generate_html(
 			owner, repo, repo_info, languages, contributors,
 			structure, dependencies, security_results
 		)
@@ -127,18 +135,20 @@ def main():
 		console.print("\n[bold green]✅ Analyse terminée ![/bold green]\n")
 		console.print(f"📊 **{repo_info['full_name']}**")
 		console.print(f"⭐ {repo_info['stars']:,} stars | 🍴 {repo_info['forks']:,} forks")
-		console.print(f"📁 {structure.get('total_files', 0):,} fichiers")
+		console.print(f"📂 {structure.get('total_files', 0):,} fichiers")
 
 		display_security_results(security_results)
 
-		console.print(f"\n[bold green]📄 Rapport généré :[/bold green] {report_path}")
-		console.print(f"[dim]Ouvrir avec: cat {report_path}[/dim]\n")
+		console.print(f"\n[bold green]📄 Rapports générés :[/bold green]")
+		console.print(f"  📝 Markdown: {md_path}")
+		console.print(f"  🌐 HTML: [bold cyan]{html_path}[/bold cyan]")
+		console.print(f"\n[dim]💡 Ouvrez le fichier HTML dans votre navigateur pour une vue interactive ![/dim]\n")
 
 	except ValueError as e:
 		console.print(f"[red]{e}[/red]")
 		sys.exit(1)
 	except KeyboardInterrupt:
-		console.print("\n[yellow]⚠ Annulé[/yellow]")
+		console.print("\n[yellow]⚠️  Annulé[/yellow]")
 	finally:
 		if analyzer:
 			analyzer.cleanup()

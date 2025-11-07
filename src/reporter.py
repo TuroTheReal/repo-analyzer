@@ -5,6 +5,7 @@ Génération de rapports d'analyse.
 import os
 from datetime import datetime
 from pathlib import Path
+from html_reporter import HTMLReportGenerator
 
 class ReportGenerator:
 	"""Génère des rapports d'analyse en différents formats."""
@@ -19,6 +20,9 @@ class ReportGenerator:
 		# Créer le dossier s'il n'existe pas
 		Path(output_dir).mkdir(exist_ok=True)
 
+		# Initialiser le générateur HTML
+		self.html_generator = HTMLReportGenerator(output_dir)
+
 	def generate_markdown(self, owner, repo, repo_info, languages,
 						contributors, structure, dependencies, security_results):
 		"""
@@ -26,7 +30,7 @@ class ReportGenerator:
 		Returns:
 			str: Chemin du fichier généré
 		"""
-  
+
 		timestamp = datetime.now().strftime("%Y-%m-%d")
 		filename = f"{repo}-{timestamp}.md"
 		filepath = os.path.join(self.output_dir, filename)
@@ -42,6 +46,18 @@ class ReportGenerator:
 			f.write(md_content)
 
 		return filepath
+
+	def generate_html(self, owner, repo, repo_info, languages,
+					 contributors, structure, dependencies, security_results):
+		"""
+		Génère un rapport HTML interactif.
+		Returns:
+			str: Chemin du fichier généré
+		"""
+		return self.html_generator.generate_html(
+			owner, repo, repo_info, languages, contributors,
+			structure, dependencies, security_results
+		)
 
 	def _build_markdown_content(self, owner, repo, repo_info, languages,
 								contributors, structure, dependencies, security_results):
@@ -74,7 +90,7 @@ class ReportGenerator:
 		md += f"| ⭐ Stars | {repo_info['stars']:,} |\n"
 		md += f"| 🍴 Forks | {repo_info['forks']:,} |\n"
 		md += f"| 👀 Watchers | {repo_info['watchers']:,} |\n"
-		md += f"| 📝 Issues ouvertes | {repo_info['open_issues']} |\n"
+		md += f"| 🐛 Issues ouvertes | {repo_info['open_issues']} |\n"
 		md += f"| ⚖️ License | {repo_info['license']} |\n"
 		md += f"| 📅 Créé le | {repo_info['created_at'][:10]} |\n"
 		md += f"| 🔄 Dernière màj | {repo_info['updated_at'][:10]} |\n"
@@ -102,7 +118,7 @@ class ReportGenerator:
 			md += "\n"
 
 		# Structure
-		md += "## 📁 Structure\n\n"
+		md += "## 📂 Structure\n\n"
 		md += "### Statistiques générales\n\n"
 		md += f"- **Fichiers totaux :** {structure.get('total_files', 0):,}\n"
 		md += f"- **Dossiers :** {structure.get('total_dirs', 0):,}\n"
