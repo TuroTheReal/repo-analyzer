@@ -83,7 +83,7 @@ class GitHubAPI:
 			dict: {"Python": 45.2, "JavaScript": 30.1, ...}
 		"""
 
-		url = f"{self.BASE_URL}/repo/{owner}/{repo}/languages"
+		url = f"{self.BASE_URL}/repos/{owner}/{repo}/languages"
 
 		try:
 			response = requests.get(url, headers=self.headers, timeout=10)
