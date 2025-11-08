@@ -1,5 +1,4 @@
-# repo-analyzer
-# GITHUB REPOSITORY ANALYZER
+# REPO ANALYZER
 
 <p align="center">
   <img src="https://img.shields.io/badge/Python-3.8+-blue.svg"/>
