@@ -6,6 +6,7 @@ import os
 from datetime import datetime
 from pathlib import Path
 from html_reporter import HTMLReportGenerator
+from score_calculator import SecurityScoreCalculator  # AJOUTÉ
 
 class ReportGenerator:
 	"""Generates analysis reports in different formats."""
@@ -22,6 +23,9 @@ class ReportGenerator:
 
 		# Initialize HTML generator
 		self.html_generator = HTMLReportGenerator(output_dir)
+
+		# Initialize score calculator  # AJOUTÉ
+		self.score_calculator = SecurityScoreCalculator()  # AJOUTÉ
 
 	def generate_markdown(self, owner, repo, repo_info, languages,
 						contributors, structure, dependencies, security_results, docker_results):
@@ -63,10 +67,24 @@ class ReportGenerator:
 								contributors, structure, dependencies, security_results, docker_results):
 		"""Build markdown content."""
 
+		# Calculate unified score  # AJOUTÉ
+		score_data = self.score_calculator.calculate_unified_score(
+			security_results, docker_results, structure
+		)
+
 		# Header
 		md = f"# Analysis of {owner}/{repo}\n\n"
 		md += f"**Generated on:** {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n\n"
 		md += f"**URL:** https://github.com/{owner}/{repo}\n\n"
+
+		# AJOUTÉ : Score unifié
+		md += f"## 🎯 Security Score: {score_data['grade']} ({score_data['total_score']}/100)\n\n"
+		md += f"**{score_data['description']}**\n\n"
+		md += "| Component | Score | Weight |\n"
+		md += "|-----------|-------|--------|\n"
+		md += f"| Security | {score_data['security_score']}/100 | 50% |\n"
+		md += f"| Docker | {score_data['docker_score']}/100 | 30% |\n"
+		md += f"| Best Practices | {score_data['best_practices_score']}/100 | 20% |\n\n"
 		md += "---\n\n"
 
 		# Table of contents

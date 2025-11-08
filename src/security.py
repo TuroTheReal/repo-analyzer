@@ -4,7 +4,9 @@ Basic security checks on a repository.
 
 import os
 import re
+import math
 from pathlib import Path
+from collections import Counter
 from rich.console import Console
 
 console = Console()
@@ -12,19 +14,76 @@ console = Console()
 class SecurityScanner:
 	"""Security scanner to detect common issues."""
 
-	# Regex patterns to detect secrets
+	# Extended secret patterns - Cloud providers
 	SECRET_PATTERNS = {
+		# AWS
 		"aws_access_key": r'AKIA[0-9A-Z]{16}',
-		"aws_secret_key": r'aws_secret_access_key\s*=\s*["\']?([A-Za-z0-9/+=]{40})["\']?',
+		"aws_secret_key": r'aws_secret_access_key\s*[=:]\s*["\']?([A-Za-z0-9/+=]{40})["\']?',
+		"aws_session_token": r'aws_session_token\s*[=:]\s*["\']?([A-Za-z0-9/+=]{16,})["\']?',
+
+		# Azure
+		"azure_storage_key": r'DefaultEndpointsProtocol=https;AccountName=[^;]+;AccountKey=[A-Za-z0-9+/=]{88}',
+
+		# Google Cloud
+		"google_api": r'AIza[0-9A-Za-z\\-_]{35}',
+		"gcp_service_account": r'"type":\s*"service_account"',
+
+		# DigitalOcean & Heroku
+		"digitalocean_token": r'dop_v1_[a-f0-9]{64}',
+		"heroku_api_key": r'[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}',
+
+		# GitHub & GitLab
 		"github_token": r'gh[pousrt]_[A-Za-z0-9]{36,}|github_pat_[A-Za-z0-9]{22}_[A-Za-z0-9]{59}',
 		"github_app_token": r'(ghu|ghs|ghr)_[A-Za-z0-9]{36,}',
+		"github_refresh_token": r'ghr_[A-Za-z0-9]{36,}',
+		"gitlab_token": r'glpat-[A-Za-z0-9\-_]{20,}',
+
+		# Communication platforms
+		"slack_token": r'xox[baprs]-[0-9a-zA-Z]{10,48}',
+		"slack_webhook": r'https://hooks\.slack\.com/services/T[A-Z0-9]+/B[A-Z0-9]+/[A-Za-z0-9]{24}',
+		"discord_token": r'[MN][A-Za-z\d]{23}\.[\w-]{6}\.[\w-]{27}',
+		"discord_webhook": r'https://discord\.com/api/webhooks/\d+/[\w-]+',
+		"telegram_bot_token": r'\d{8,10}:[A-Za-z0-9_-]{35}',
+
+		# Payment services
+		"stripe_key": r'sk_live_[0-9a-zA-Z]{24,}',
+		"stripe_restricted_key": r'rk_live_[0-9a-zA-Z]{24,}',
+		"paypal_braintree": r'access_token\$production\$[a-z0-9]{16}\$[a-f0-9]{32}',
+		"square_token": r'sq0atp-[0-9A-Za-z\-_]{22}',
+
+		# Databases
+		"mongodb_uri": r'mongodb(\+srv)?://[^:]+:[^@]+@[^/]+',
+		"postgres_uri": r'postgres(ql)?://[^:]+:[^@]+@[^/]+',
+		"mysql_uri": r'mysql://[^:]+:[^@]+@[^/]+',
+		"redis_uri": r'redis://[^:]*:[^@]+@[^/]+',
+
+		# Email & Communication APIs
+		"sendgrid_api_key": r'SG\.[A-Za-z0-9_-]{22}\.[A-Za-z0-9_-]{43}',
+		"twilio_api_key": r'SK[a-f0-9]{32}',
+		"mailgun_api_key": r'key-[a-f0-9]{32}',
+		"mailchimp_api_key": r'[a-f0-9]{32}-us\d{1,2}',
+
+		# Other services
+		"firebase_api_key": r'AIza[0-9A-Za-z\-_]{35}',
+		"cloudinary_url": r'cloudinary://[0-9]+:[A-Za-z0-9_-]+@[a-z]+',
+
+		# Authentication
+		"jwt_token": r'eyJ[A-Za-z0-9_-]*\.eyJ[A-Za-z0-9_-]*\.[A-Za-z0-9_-]*',
+		"basic_auth": r'://[^:/@]+:[^@/]+@',
+
+		# Private keys & certificates
+		"private_key": r'-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----',
+		"pgp_private_key": r'-----BEGIN PGP PRIVATE KEY BLOCK-----',
+
+		# Generic patterns
 		"generic_api_key": r'api[_-]?key\s*[=:]\s*["\']([A-Za-z0-9_\-]{20,})["\']',
 		"generic_secret": r'secret\s*[=:]\s*["\']([A-Za-z0-9_\-]{20,})["\']',
 		"password": r'password\s*[=:]\s*["\']([^"\']{8,})["\']',
-		"private_key": r'-----BEGIN (?:RSA |EC )?PRIVATE KEY-----',
-		"slack_token": r'xox[baprs]-[0-9a-zA-Z]{10,48}',
-		"stripe_key": r'sk_live_[0-9a-zA-Z]{24,}',
-		"google_api": r'AIza[0-9A-Za-z\\-_]{35}',
+		"generic_token": r'token\s*[=:]\s*["\']([A-Za-z0-9_\-]{20,})["\']',
+
+		# Package managers
+		"npm_token": r'npm_[A-Za-z0-9]{36}',
+		"pypi_token": r'pypi-AgEIcHlwaS5vcmc[A-Za-z0-9\-_]{50,}',
 	}
 
 	# Patterns for dynamic variables (SAFE - not real secrets)
@@ -39,17 +98,36 @@ class SecurityScanner:
 		r'System\.getenv\(["\'][^"\']+["\']\)', # Java
 	]
 
+	# False positive patterns
+	FALSE_POSITIVE_PATTERNS = [
+		r'example\.com',
+		r'test[_-]?api[_-]?key',
+		r'your[_-]?api[_-]?key',
+		r'insert[_-]?key[_-]?here',
+		r'replace[_-]?with[_-]?your',
+		r'dummy[_-]?(key|token|secret)',
+		r'fake[_-]?(key|token|secret)',
+		r'placeholder',
+		r'xxx+',
+		r'000+',
+		r'abc123',
+		r'sample[_-]?key',
+		r'<[A-Z_]+>',  # <API_KEY>
+	]
+
 	# Sensitive files that shouldn't be committed
 	SENSITIVE_FILES = [
 		".env",
 		".env.local",
 		".env.production",
+		".env.development",
 		"credentials.json",
 		"secrets.yaml",
 		"secrets.yml",
 		"config/secrets.yml",
 		"id_rsa",
 		"id_dsa",
+		"id_ecdsa",
 		".ssh/id_rsa",
 		"*.pem",
 		"*.key",
@@ -57,17 +135,20 @@ class SecurityScanner:
 		"*.pfx",
 		".aws/credentials",
 		".docker/config.json",
+		"*.keystore",
+		"*.jks",
 	]
 
 	# File extensions to ignore (binaries, media, etc.)
 	IGNORED_EXTENSIONS = {
-		'.png', '.jpg', '.jpeg', '.gif', '.ico', '.svg',
-		'.mp4', '.mov', '.avi', '.mp3', '.wav',
-		'.zip', '.tar', '.gz', '.rar', '.7z',
+		'.png', '.jpg', '.jpeg', '.gif', '.ico', '.svg', '.webp',
+		'.mp4', '.mov', '.avi', '.mp3', '.wav', '.flac',
+		'.zip', '.tar', '.gz', '.rar', '.7z', '.bz2',
 		'.exe', '.dll', '.so', '.dylib',
-		'.pdf', '.doc', '.docx', '.xls', '.xlsx',
+		'.pdf', '.doc', '.docx', '.xls', '.xlsx', '.ppt', '.pptx',
 		'.pyc', '.pyo', '.class', '.o', '.a',
-		'.min.js', '.min.css',
+		'.min.js', '.min.css', '.bundle.js',
+		'.woff', '.woff2', '.ttf', '.eot',
 	}
 
 	def __init__(self, repo_path):
@@ -126,14 +207,58 @@ class SecurityScanner:
 				return True
 		return False
 
+	def _is_likely_false_positive(self, text):
+		"""Check if text matches common false positive patterns."""
+		text_lower = text.lower()
+
+		for pattern in self.FALSE_POSITIVE_PATTERNS:
+			if re.search(pattern, text_lower):
+				return True
+
+		# Empty or very short values
+		if len(text.strip()) < 10:
+			return True
+
+		# Only repeated characters
+		if len(set(text)) <= 3:
+			return True
+
+		return False
+
+	def _calculate_entropy(self, text):
+		"""Calculate Shannon entropy to detect random strings (likely secrets)."""
+		if not text:
+			return 0
+
+		counts = Counter(text)
+		length = len(text)
+
+		entropy = -sum(
+			(count / length) * math.log2(count / length)
+			for count in counts.values()
+		)
+
+		return entropy
+
+	def _is_high_entropy_string(self, text, threshold=4.5):
+		"""
+		Detect high-entropy strings (possible secrets).
+		threshold: typically 4.0-5.0 for detecting secrets
+		"""
+		if len(text) < 20:
+			return False
+
+		entropy = self._calculate_entropy(text)
+		return entropy > threshold
+
 	def _scan_secrets(self):
 		"""Scan all text files for secrets."""
 		scanned_files = 0
-		max_files = 500  # Limit to avoid scanning huge repos too long
+		max_files = 1000  # Increased limit
 
 		for root, dirs, files in os.walk(self.repo_path):
 			# Ignore .git, node_modules, etc.
-			dirs[:] = [d for d in dirs if d not in ['.git', 'node_modules', 'venv', '__pycache__']]
+			dirs[:] = [d for d in dirs if d not in ['.git', 'node_modules', 'venv', '__pycache__', 'vendor', 'dist', 'build']]
 
 			if scanned_files >= max_files:
 				break
@@ -149,9 +274,9 @@ class SecurityScanner:
 				if Path(file).suffix in self.IGNORED_EXTENSIONS:
 					continue
 
-				# Ignore large files (>1MB)
+				# Ignore large files (>2MB)
 				try:
-					if os.path.getsize(file_path) > 1_000_000:
+					if os.path.getsize(file_path) > 2_000_000:
 						continue
 				except:
 					continue
@@ -182,15 +307,19 @@ class SecurityScanner:
 						if self._is_dynamic_variable(line_content):
 							continue
 
+						# CHECK: False positive?
+						if self._is_likely_false_positive(line_content):
+							continue
+
 						# Mask the secret value
 						secret_value = match.group(0)
 						masked_value = secret_value[:8] + "***" if len(secret_value) > 8 else "***"
 
 						# Determine severity
 						severity = "critical"
-						if secret_type in ["password", "generic_secret"]:
-							# Might be a false positive (e.g., password = "")
-							if len(secret_value) < 15:
+						if secret_type in ["password", "generic_secret", "generic_token"]:
+							# Check entropy for generic patterns
+							if not self._is_high_entropy_string(secret_value):
 								severity = "medium"
 
 						self.alerts.append({
@@ -281,7 +410,8 @@ class SecurityScanner:
 
 	def check_dependencies_versions(self, dependencies):
 		"""
-		Check if Python dependencies are outdated (basic).
+		Check if dependencies are outdated (basic check).
+		For real vulnerability checking, see vulnerability_checker.py
 
 		Args:
 			dependencies: Dict of dependencies from analyzer
@@ -291,12 +421,15 @@ class SecurityScanner:
 		if "python" not in dependencies:
 			return
 
-		# Check some known packages with vulnerabilities
+		# Basic known vulnerable packages (for offline check)
 		vulnerable_packages = {
 			"django": {"min_safe": "4.2", "reason": "Versions < 4.2 have CVEs"},
 			"requests": {"min_safe": "2.31.0", "reason": "Versions < 2.31 have CVEs"},
 			"flask": {"min_safe": "2.3.0", "reason": "Old versions have CVEs"},
 			"pillow": {"min_safe": "10.0.0", "reason": "Image parsing vulnerabilities"},
+			"pyyaml": {"min_safe": "6.0", "reason": "Arbitrary code execution vulnerability"},
+			"jinja2": {"min_safe": "3.1.0", "reason": "XSS vulnerabilities"},
+			"cryptography": {"min_safe": "41.0.0", "reason": "Security vulnerabilities"},
 		}
 
 		for dep in dependencies["python"]:
@@ -306,7 +439,7 @@ class SecurityScanner:
 			elif ">=" in dep:
 				pkg_name, version = dep.split(">=")
 			else:
-				continue  # No version specified
+				continue
 
 			pkg_name = pkg_name.strip().lower()
 
@@ -314,7 +447,6 @@ class SecurityScanner:
 				min_safe = vulnerable_packages[pkg_name]["min_safe"]
 				reason = vulnerable_packages[pkg_name]["reason"]
 
-				# Simplified version comparison (not robust but sufficient)
 				if self._version_is_older(version, min_safe):
 					self.alerts.append({
 						"type": "outdated_dependency",
@@ -327,7 +459,7 @@ class SecurityScanner:
 
 	def _version_is_older(self, version1, version2):
 		"""
-		Compare two versions (very simplified).
+		Compare two versions (simplified).
 
 		Returns:
 			bool: True if version1 < version2
@@ -336,15 +468,13 @@ class SecurityScanner:
 			v1_parts = [int(x) for x in version1.split('.')]
 			v2_parts = [int(x) for x in version2.split('.')]
 
-			# Compare each part
 			for v1, v2 in zip(v1_parts, v2_parts):
 				if v1 < v2:
 					return True
 				elif v1 > v2:
 					return False
 
-			# If equal so far, shorter is older
 			return len(v1_parts) < len(v2_parts)
 
 		except:
-			return False  # On error, assume it's ok
+			return False
