@@ -1,5 +1,5 @@
 """
-Génération de rapports HTML interactifs et modernes.
+Interactive modern HTML report generation.
 """
 
 import os
@@ -7,57 +7,335 @@ from datetime import datetime
 from pathlib import Path
 
 class HTMLReportGenerator:
-	"""Génère des rapports HTML avec design moderne et interactif."""
+	"""Generates HTML reports with modern design and interactivity."""
 
 	def __init__(self, output_dir="output"):
 		"""
 		Args:
-			output_dir: Dossier où sauvegarder les rapports
+			output_dir: Directory to save reports
 		"""
 		self.output_dir = output_dir
 		Path(output_dir).mkdir(exist_ok=True)
 
 	def generate_html(self, owner, repo, repo_info, languages,
-					contributors, structure, dependencies, security_results):
+					contributors, structure, dependencies, security_results, docker_results):
 		"""
-		Génère un rapport HTML complet et interactif.
+		Generate complete interactive HTML report.
 
 		Returns:
-			str: Chemin du fichier généré
+			str: Path to generated file
 		"""
 		timestamp = datetime.now().strftime("%Y-%m-%d")
 		filename = f"{repo}-{timestamp}.html"
 		filepath = os.path.join(self.output_dir, filename)
 
-		# Construction du HTML
+		# Build HTML
 		html_content = self._build_html(
 			owner, repo, repo_info, languages, contributors,
-			structure, dependencies, security_results
+			structure, dependencies, security_results, docker_results
 		)
 
-		# Écriture du fichier
+		# Write file
 		with open(filepath, 'w', encoding='utf-8') as f:
 			f.write(html_content)
 
 		return filepath
 
-	def _build_html(self, owner, repo, repo_info, languages,
-				contributors, structure, dependencies, security_results):
-		"""Construit le contenu HTML complet."""
+	def _calculate_security_score(self, security_results):
+		"""Calculate security score out of 100."""
+		total = security_results['total']
 
-		# Calcul du security score
+		if total == 0:
+			return 100
+
+		# Penalties by severity
+		score = 100
+		score -= len(security_results['critical']) * 20
+		score -= len(security_results['high']) * 10
+		score -= len(security_results['medium']) * 5
+		score -= len(security_results['low']) * 2
+
+		return max(0, score)
+
+	def _get_score_class(self, score):
+		"""Return CSS class based on score."""
+		if score >= 90:
+			return "score-excellent"
+		elif score >= 70:
+			return "score-good"
+		elif score >= 50:
+			return "score-warning"
+		else:
+			return "score-danger"
+
+	def _get_score_description(self, score):
+		"""Return score description."""
+		if score >= 90:
+			return "Excellent! Very few issues detected."
+		elif score >= 70:
+			return "Good. Some improvements possible."
+		elif score >= 50:
+			return "Average. Several issues to fix."
+		else:
+			return "Warning! Important security issues."
+
+	def _prepare_languages_data(self, languages):
+		"""Prepare data for languages chart."""
+		if not languages:
+			return None
+
+		return {
+			'labels': list(languages.keys())[:6],
+			'data': list(languages.values())[:6]
+		}
+
+	def _prepare_file_types_data(self, structure):
+		"""Prepare data for file types chart."""
+		file_types = structure.get('file_types', {})
+		if not file_types:
+			return None
+
+		# Top 8 file types
+		top_types = dict(list(file_types.items())[:8])
+
+		return {
+			'labels': list(top_types.keys()),
+			'data': list(top_types.values())
+		}
+
+	def _generate_docker_section(self, docker_results):
+		"""Generate Docker configuration section."""
+		if not docker_results['dockerfiles'] and not docker_results['compose_files']:
+			return ""
+
+		# Files summary
+		files_html = f"""
+		<div style="margin-bottom: 1.5rem;">
+			<p style="color: var(--text-secondary); margin-bottom: 0.5rem;">
+				📄 {len(docker_results['dockerfiles'])} Dockerfile(s),
+				{len(docker_results['compose_files'])} docker-compose file(s)
+			</p>
+		</div>
+		"""
+
+		# If no issues
+		if docker_results['total'] == 0:
+			return f"""
+			<div class="section">
+				<div class="section-title">🐳 Docker Configuration</div>
+				{files_html}
+				<div style="text-align: center; padding: 2rem;">
+					<div style="font-size: 4rem; margin-bottom: 1rem;">✅</div>
+					<p style="font-size: 1.1rem; color: var(--accent-green);">
+						Docker configuration looks good!
+					</p>
+				</div>
+			</div>
+			"""
+
+		# With issues - filter buttons
+		filters_html = f"""
+		<div class="filter-buttons">
+			<button class="filter-btn active" onclick="filterDockerAlerts('all')">
+				All ({docker_results['total']})
+			</button>
+			<button class="filter-btn" onclick="filterDockerAlerts('critical')">
+				🔴 Critical ({len(docker_results['critical'])})
+			</button>
+			<button class="filter-btn" onclick="filterDockerAlerts('high')">
+				🟠 High ({len(docker_results['high'])})
+			</button>
+			<button class="filter-btn" onclick="filterDockerAlerts('medium')">
+				🟡 Medium ({len(docker_results['medium'])})
+			</button>
+			<button class="filter-btn" onclick="filterDockerAlerts('low')">
+				🔵 Low ({len(docker_results['low'])})
+			</button>
+			<button class="filter-btn" onclick="filterDockerAlerts('info')">
+				ℹ️ Info ({len(docker_results.get('info', []))})
+			</button>
+		</div>
+		"""
+
+		# Generate alerts
+		alerts_html = ""
+		severity_icons = {
+			"critical": "🔴",
+			"high": "🟠",
+			"medium": "🟡",
+			"low": "🔵",
+			"info": "ℹ️"
+		}
+
+		for severity in ["critical", "high", "medium", "low", "info"]:
+			for alert in docker_results.get(severity, []):
+				icon = severity_icons[severity]
+
+				file_info = alert['file']
+				if alert.get('line', 0) > 0:
+					file_info += f":{alert['line']}"
+
+				recommendation_html = ""
+				if 'recommendation' in alert:
+					recommendation_html = f"<div style='margin-top: 0.5rem; color: var(--text-secondary);'>💡 {alert['recommendation']}</div>"
+
+				alerts_html += f"""
+				<div class="alert alert-{severity} docker-alert" data-severity="{severity}">
+					<div class="alert-icon">{icon}</div>
+					<div class="alert-content">
+						<div class="alert-title">{alert['message']}</div>
+						<div class="alert-details">
+							<span class='code'>{file_info}</span>
+							{recommendation_html}
+						</div>
+					</div>
+				</div>
+				"""
+
+		return f"""
+		<div class="section">
+			<div class="section-title">🐳 Docker Configuration ({docker_results['total']} issues)</div>
+			{files_html}
+			{filters_html}
+			<div class="alerts-container">
+				{alerts_html}
+			</div>
+		</div>
+		"""
+
+	def _generate_security_section(self, security_results):
+		"""Generate security section with alerts."""
+		total = security_results['total']
+
+		if total == 0:
+			return """
+			<div class="section">
+				<div class="section-title">🔒 Security Alerts</div>
+				<div style="text-align: center; padding: 3rem;">
+					<div style="font-size: 5rem; margin-bottom: 1rem;">✅</div>
+					<p style="font-size: 1.2rem; color: var(--accent-green);">
+						No security issues detected!
+					</p>
+				</div>
+			</div>
+			"""
+
+		# Filter buttons
+		filters_html = f"""
+		<div class="filter-buttons">
+			<button class="filter-btn active" onclick="filterSecurityAlerts('all')">
+				All ({total})
+			</button>
+			<button class="filter-btn" onclick="filterSecurityAlerts('critical')">
+				🔴 Critical ({len(security_results['critical'])})
+			</button>
+			<button class="filter-btn" onclick="filterSecurityAlerts('high')">
+				🟠 High ({len(security_results['high'])})
+			</button>
+			<button class="filter-btn" onclick="filterSecurityAlerts('medium')">
+				🟡 Medium ({len(security_results['medium'])})
+			</button>
+			<button class="filter-btn" onclick="filterSecurityAlerts('low')">
+				🔵 Low ({len(security_results['low'])})
+			</button>
+		</div>
+		"""
+
+		# Generate alerts
+		alerts_html = ""
+		severity_icons = {
+			"critical": "🔴",
+			"high": "🟠",
+			"medium": "🟡",
+			"low": "🔵"
+		}
+
+		for severity in ["critical", "high", "medium", "low"]:
+			for alert in security_results.get(severity, []):
+				icon = severity_icons[severity]
+
+				if alert["type"] == "secret_exposed":
+					title = f"{alert['secret_type'].replace('_', ' ').title()} detected"
+					details = f"<span class='code'>{alert['file']}:{alert['line']}</span><br>{alert['preview'][:100]}..."
+				elif alert["type"] == "sensitive_file":
+					title = f"Sensitive file: {alert['file']}"
+					details = alert['message']
+				elif alert["type"] == "outdated_dependency":
+					title = f"Outdated dependency: {alert['package']}"
+					details = f"Current version: {alert['current_version']} → Recommended: {alert['min_safe_version']}"
+				else:
+					title = alert.get('message', 'Alert')
+					details = alert.get('file', '')
+
+				alerts_html += f"""
+				<div class="alert alert-{severity} security-alert" data-severity="{severity}">
+					<div class="alert-icon">{icon}</div>
+					<div class="alert-content">
+						<div class="alert-title">{title}</div>
+						<div class="alert-details">{details}</div>
+					</div>
+				</div>
+				"""
+
+		return f"""
+		<div class="section">
+			<div class="section-title">⚠️ Security Alerts ({total})</div>
+			{filters_html}
+			<div class="alerts-container">
+				{alerts_html}
+			</div>
+		</div>
+		"""
+
+
+	def _build_html(self, owner, repo, repo_info, languages,
+				contributors, structure, dependencies, security_results, docker_results):
+		"""Build complete HTML content."""
+
+		# Calculate security score
 		security_score = self._calculate_security_score(security_results)
 
-		# Préparation des données pour les graphiques
+		# Prepare data for charts
 		languages_data = self._prepare_languages_data(languages)
 		file_types_data = self._prepare_file_types_data(structure)
 
+		# Generate sections
+		docker_section = self._generate_docker_section(docker_results)
+		security_section = self._generate_security_section(security_results)
+
+		# Build contributors section
+		contributors_html = ""
+		if contributors:
+			medals = ["🥇", "🥈", "🥉", "4️⃣", "5️⃣"]
+			for i, contrib in enumerate(contributors[:5]):
+				medal = medals[i] if i < len(medals) else f"{i+1}️⃣"
+				contributors_html += f"""
+				<div class="contributor">
+					<div class="contributor-rank">{medal}</div>
+					<div class="contributor-name">
+						<a href="https://github.com/{contrib['login']}" target="_blank">
+							{contrib['login']}
+						</a>
+					</div>
+					<div class="contributor-commits">{contrib['contributions']:,} commits</div>
+				</div>
+				"""
+
+		contributors_section = f"""
+		<div class="section">
+			<div class="section-title">👥 Top Contributors</div>
+			<div class="contributors-grid">
+				{contributors_html}
+			</div>
+		</div>
+		""" if contributors else ""
+
 		html = f"""<!DOCTYPE html>
-<html lang="fr">
-<head>
+	<html lang="en">
+	<head>
 	<meta charset="UTF-8">
 	<meta name="viewport" content="width=device-width, initial-scale=1.0">
-	<title>Rapport {owner}/{repo}</title>
+	<title>Report {owner}/{repo}</title>
 	<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/3.9.1/chart.min.js"></script>
 	<style>
 		* {{
@@ -227,7 +505,7 @@ class HTMLReportGenerator:
 		.chart-wrapper {{
 			position: relative;
 			width: 100%;
-			max-width: 600px; /* limite la largeur pour éviter les donuts géants */
+			max-width: 600px;
 			margin: 0 auto;
 		}}
 
@@ -319,6 +597,11 @@ class HTMLReportGenerator:
 		.alert-low {{
 			border-color: var(--accent-blue);
 			background: linear-gradient(90deg, rgba(124, 159, 245, 0.08), var(--bg-tertiary));
+		}}
+
+		.alert-info {{
+			border-color: var(--accent-blue);
+			background: linear-gradient(90deg, rgba(124, 159, 245, 0.05), var(--bg-tertiary));
 		}}
 
 		.alert-icon {{
@@ -507,47 +790,6 @@ class HTMLReportGenerator:
 			display: none !important;
 		}}
 
-		.deps-grid {{
-			display: grid;
-			grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-			gap: 2rem;
-		}}
-
-		.deps-category {{
-			background: var(--bg-tertiary);
-			padding: 1.5rem;
-			border-radius: 12px;
-			border: 1px solid var(--border);
-		}}
-
-		.deps-category h3 {{
-			font-size: 1.2rem;
-			margin-bottom: 1rem;
-			color: var(--accent-blue);
-			display: flex;
-			align-items: center;
-			gap: 0.5rem;
-		}}
-
-		.deps-list {{
-			list-style: none;
-			padding: 0;
-		}}
-
-		.deps-list li {{
-			padding: 0.5rem 0;
-			border-bottom: 1px solid var(--border);
-			color: var(--text-secondary);
-		}}
-
-		.deps-list li:last-child {{
-			border-bottom: none;
-		}}
-
-		.deps-list code {{
-			color: var(--accent-purple);
-		}}
-
 		@media (max-width: 768px) {{
 			.container {{
 				padding: 1.5rem;
@@ -576,20 +818,20 @@ class HTMLReportGenerator:
 			}}
 		}}
 	</style>
-</head>
-<body>
+	</head>
+	<body>
 	<div class="container">
 		<header>
-			<h1>📊 Analyse: {owner}/{repo}</h1>
+			<h1>📊 Analysis: {owner}/{repo}</h1>
 			<a href="https://github.com/{owner}/{repo}" class="repo-url" target="_blank">
 				github.com/{owner}/{repo} →
 			</a>
 			<p class="timestamp">
-				Généré le {datetime.now().strftime('%d/%m/%Y à %H:%M')}
+				Generated on {datetime.now().strftime('%m/%d/%Y at %H:%M')}
 			</p>
 		</header>
 
-		<!-- Stats principales -->
+		<!-- Main stats -->
 		<div class="stats-grid">
 			<div class="stat-card">
 				<div class="stat-icon">⭐</div>
@@ -604,18 +846,18 @@ class HTMLReportGenerator:
 			<div class="stat-card">
 				<div class="stat-icon">📂</div>
 				<div class="stat-value">{structure.get('total_files', 0):,}</div>
-				<div class="stat-label">Fichiers</div>
+				<div class="stat-label">Files</div>
 			</div>
 			<div class="stat-card">
 				<div class="stat-icon">🐛</div>
 				<div class="stat-value">{repo_info['open_issues']}</div>
-				<div class="stat-label">Issues ouvertes</div>
+				<div class="stat-label">Open issues</div>
 			</div>
 		</div>
 
 		<!-- Security Score -->
 		<div class="section">
-			<div class="section-title">🔒 Score de sécurité</div>
+			<div class="section-title">🔒 Security Score</div>
 			<div class="security-score">
 				<div class="score-circle {self._get_score_class(security_score)}">
 					{security_score}/100
@@ -626,20 +868,44 @@ class HTMLReportGenerator:
 			</div>
 		</div>
 
-		<!-- Langages -->
-		{self._generate_languages_section(languages, languages_data)}
+		<!-- Languages -->
+		{'<div class="section"><div class="section-title">💻 Languages</div><div class="chart-container"><div class="chart-wrapper"><canvas id="languagesChart"></canvas></div></div></div>' if languages else ''}
 
 		<!-- Contributors -->
-		{self._generate_contributors_section(contributors)}
+		{contributors_section}
 
 		<!-- Structure -->
-		{self._generate_structure_section(structure, file_types_data)}
+		<div class="section">
+			<div class="section-title">📁 Project Structure</div>
+			<div style="display: flex; gap: 1rem; flex-wrap: wrap; margin-bottom: 1.5rem;">
+				<span class="badge {'badge-success' if structure.get('has_tests') else 'badge-danger'}">
+					{'✅' if structure.get('has_tests') else '❌'} Tests
+				</span>
+				<span class="badge {'badge-success' if structure.get('has_ci') else 'badge-danger'}">
+					{'✅' if structure.get('has_ci') else '❌'} CI/CD
+				</span>
+				<span class="badge {'badge-success' if structure.get('has_docker') else 'badge-danger'}">
+					{'✅' if structure.get('has_docker') else '❌'} Docker
+				</span>
+			</div>
+			<div class="info-grid">
+				<div class="info-item">
+					<p class="info-label">Directories</p>
+					<p class="info-value">{structure.get('total_dirs', 0):,}</p>
+				</div>
+				<div class="info-item">
+					<p class="info-label">Max depth</p>
+					<p class="info-value">{structure.get('max_depth', 0)}</p>
+				</div>
+			</div>
+			{('<div class="chart-container"><div class="chart-wrapper"><canvas id="fileTypesChart"></canvas></div></div>' if file_types_data else '')}
+		</div>
 
-		<!-- Dépendances -->
-		{self._generate_dependencies_section(dependencies)}
+		<!-- Docker Configuration -->
+		{docker_section}
 
-		<!-- Alertes de sécurité -->
-		{self._generate_security_section(security_results)}
+		<!-- Security Alerts -->
+		{security_section}
 
 		<footer>
 			<p style="font-size: 1.1rem; margin-bottom: 0.5rem;">
@@ -654,20 +920,20 @@ class HTMLReportGenerator:
 	</div>
 
 	<script>
-		// Configuration Chart.js pour le thème sombre
+		// Chart.js config for dark theme
 		Chart.defaults.color = '#a3a8c3';
 		Chart.defaults.borderColor = '#363b52';
 
-		// Graphique des langages
-		{self._generate_languages_chart(languages_data)}
+		// Languages chart
+		{self._generate_languages_chart(languages_data) if languages_data else ''}
 
-		// Graphique des types de fichiers
-		{self._generate_file_types_chart(file_types_data)}
+		// File types chart
+		{self._generate_file_types_chart(file_types_data) if file_types_data else ''}
 
-		// Filtres pour les alertes de sécurité
-		function filterAlerts(severity) {{
-			const buttons = document.querySelectorAll('.filter-btn');
-			const alerts = document.querySelectorAll('.alert');
+		// Filter functions for security alerts
+		function filterSecurityAlerts(severity) {{
+			const buttons = document.querySelectorAll('.filter-buttons .filter-btn');
+			const alerts = document.querySelectorAll('.security-alert');
 
 			buttons.forEach(btn => btn.classList.remove('active'));
 			event.target.classList.add('active');
@@ -676,7 +942,24 @@ class HTMLReportGenerator:
 				alerts.forEach(alert => alert.classList.remove('hidden'));
 			}} else {{
 				alerts.forEach(alert => {{
-					if (alert.classList.contains('alert-' + severity)) {{
+					if (alert.dataset.severity === severity) {{
+						alert.classList.remove('hidden');
+					}} else {{
+						alert.classList.add('hidden');
+					}}
+				}});
+			}}
+		}}
+
+		// Filter functions for Docker alerts
+		function filterDockerAlerts(severity) {{
+			const alerts = document.querySelectorAll('.docker-alert');
+
+			if (severity === 'all') {{
+				alerts.forEach(alert => alert.classList.remove('hidden'));
+			}} else {{
+				alerts.forEach(alert => {{
+					if (alert.dataset.severity === severity) {{
 						alert.classList.remove('hidden');
 					}} else {{
 						alert.classList.add('hidden');
@@ -685,280 +968,13 @@ class HTMLReportGenerator:
 			}}
 		}}
 	</script>
-</body>
-</html>"""
+	</body>
+	</html>"""
 
 		return html
 
-	def _calculate_security_score(self, security_results):
-		"""Calcule un score de sécurité sur 100."""
-		total = security_results['total']
-
-		if total == 0:
-			return 100
-
-		# Pénalités par sévérité
-		score = 100
-		score -= len(security_results['critical']) * 20
-		score -= len(security_results['high']) * 10
-		score -= len(security_results['medium']) * 5
-		score -= len(security_results['low']) * 2
-
-		return max(0, score)
-
-	def _get_score_class(self, score):
-		"""Retourne la classe CSS selon le score."""
-		if score >= 90:
-			return "score-excellent"
-		elif score >= 70:
-			return "score-good"
-		elif score >= 50:
-			return "score-warning"
-		else:
-			return "score-danger"
-
-	def _get_score_description(self, score):
-		"""Retourne une description du score."""
-		if score >= 90:
-			return "Excellent ! Très peu de problèmes détectés."
-		elif score >= 70:
-			return "Bon. Quelques améliorations possibles."
-		elif score >= 50:
-			return "Moyen. Plusieurs problèmes à corriger."
-		else:
-			return "Attention ! Problèmes de sécurité importants."
-
-	def _prepare_languages_data(self, languages):
-		"""Prépare les données pour le graphique des langages."""
-		if not languages:
-			return None
-
-		return {
-			'labels': list(languages.keys())[:6],
-			'data': list(languages.values())[:6]
-		}
-
-	def _prepare_file_types_data(self, structure):
-		"""Prépare les données pour le graphique des types de fichiers."""
-		file_types = structure.get('file_types', {})
-		if not file_types:
-			return None
-
-		# Top 8 types de fichiers
-		top_types = dict(list(file_types.items())[:8])
-
-		return {
-			'labels': list(top_types.keys()),
-			'data': list(top_types.values())
-		}
-
-	def _generate_languages_section(self, languages, languages_data):
-		"""Génère la section des langages."""
-		if not languages:
-			return ""
-
-		return f"""
-		<div class="section">
-			<div class="section-title">💻 Langages</div>
-			<div class="chart-container">
-				<div class="chart-wrapper">
-					<canvas id="languagesChart"></canvas>
-				</div>
-			</div>
-		</div>
-		"""
-
-	def _generate_contributors_section(self, contributors):
-		"""Génère la section des contributeurs."""
-		if not contributors:
-			return ""
-
-		contributors_html = ""
-		medals = ["🥇", "🥈", "🥉", "4️⃣", "5️⃣"]
-
-		for i, contrib in enumerate(contributors[:5]):
-			medal = medals[i] if i < len(medals) else f"{i+1}️⃣"
-			contributors_html += f"""
-			<div class="contributor">
-				<div class="contributor-rank">{medal}</div>
-				<div class="contributor-name">
-					<a href="https://github.com/{contrib['login']}" target="_blank">
-						{contrib['login']}
-					</a>
-				</div>
-				<div class="contributor-commits">{contrib['contributions']:,} commits</div>
-			</div>
-			"""
-
-		return f"""
-		<div class="section">
-			<div class="section-title">👥 Top contributeurs</div>
-			<div class="contributors-grid">
-				{contributors_html}
-			</div>
-		</div>
-		"""
-
-	def _generate_structure_section(self, structure, file_types_data):
-		"""Génère la section structure."""
-		features_html = f"""
-		<div style="display: flex; gap: 1rem; flex-wrap: wrap; margin-bottom: 1.5rem;">
-			<span class="badge {'badge-success' if structure.get('has_tests') else 'badge-danger'}">
-				{'✅' if structure.get('has_tests') else '❌'} Tests
-			</span>
-			<span class="badge {'badge-success' if structure.get('has_ci') else 'badge-danger'}">
-				{'✅' if structure.get('has_ci') else '❌'} CI/CD
-			</span>
-			<span class="badge {'badge-success' if structure.get('has_docker') else 'badge-danger'}">
-				{'✅' if structure.get('has_docker') else '❌'} Docker
-			</span>
-		</div>
-		"""
-
-		chart_html = ""
-		if file_types_data:
-			chart_html = """
-			<div class="chart-container">
-				<div class="chart-wrapper">
-					<canvas id="fileTypesChart"></canvas>
-				</div>
-			</div>
-			"""
-
-		return f"""
-		<div class="section">
-			<div class="section-title">📁 Structure du projet</div>
-			{features_html}
-			<div class="info-grid">
-				<div class="info-item">
-					<p class="info-label">Dossiers</p>
-					<p class="info-value">{structure.get('total_dirs', 0):,}</p>
-				</div>
-				<div class="info-item">
-					<p class="info-label">Profondeur max</p>
-					<p class="info-value">{structure.get('max_depth', 0)}</p>
-				</div>
-			</div>
-			{chart_html}
-		</div>
-		"""
-
-	def _generate_dependencies_section(self, dependencies):
-		"""Génère la section dépendances."""
-		if not dependencies:
-			return ""
-
-		deps_html = ""
-		for dep_type, deps in dependencies.items():
-			if deps:
-				deps_list = "".join([f"<li><code>{dep}</code></li>" for dep in deps[:10]])
-				deps_html += f"""
-				<div class="deps-category">
-					<h3>📦 {dep_type.capitalize()}</h3>
-					<ul class="deps-list">
-						{deps_list}
-					</ul>
-				</div>
-				"""
-
-		if not deps_html:
-			return ""
-
-		return f"""
-		<div class="section">
-			<div class="section-title">📦 Dépendances</div>
-			<div class="deps-grid">
-				{deps_html}
-			</div>
-		</div>
-		"""
-
-	def _generate_security_section(self, security_results):
-		"""Génère la section sécurité avec les alertes."""
-		total = security_results['total']
-
-		if total == 0:
-			return """
-			<div class="section">
-				<div class="section-title">🔒 Alertes de sécurité</div>
-				<div style="text-align: center; padding: 3rem;">
-					<div style="font-size: 5rem; margin-bottom: 1rem;">✅</div>
-					<p style="font-size: 1.2rem; color: var(--accent-green);">
-						Aucun problème de sécurité détecté !
-					</p>
-				</div>
-			</div>
-			"""
-
-		# Boutons de filtrage
-		filters_html = f"""
-		<div class="filter-buttons">
-			<button class="filter-btn active" onclick="filterAlerts('all')">
-				Tous ({total})
-			</button>
-			<button class="filter-btn" onclick="filterAlerts('critical')">
-				🔴 Critique ({len(security_results['critical'])})
-			</button>
-			<button class="filter-btn" onclick="filterAlerts('high')">
-				🟠 Élevée ({len(security_results['high'])})
-			</button>
-			<button class="filter-btn" onclick="filterAlerts('medium')">
-				🟡 Moyenne ({len(security_results['medium'])})
-			</button>
-			<button class="filter-btn" onclick="filterAlerts('low')">
-				🔵 Basse ({len(security_results['low'])})
-			</button>
-		</div>
-		"""
-
-		# Génération des alertes
-		alerts_html = ""
-		severity_icons = {
-			"critical": "🔴",
-			"high": "🟠",
-			"medium": "🟡",
-			"low": "🔵"
-		}
-
-		for severity in ["critical", "high", "medium", "low"]:
-			for alert in security_results.get(severity, []):
-				icon = severity_icons[severity]
-
-				if alert["type"] == "secret_exposed":
-					title = f"{alert['secret_type'].replace('_', ' ').title()} détecté"
-					details = f"<span class='code'>{alert['file']}:{alert['line']}</span><br>{alert['preview'][:100]}..."
-				elif alert["type"] == "sensitive_file":
-					title = f"Fichier sensible: {alert['file']}"
-					details = alert['message']
-				elif alert["type"] == "outdated_dependency":
-					title = f"Dépendance obsolète: {alert['package']}"
-					details = f"Version actuelle: {alert['current_version']} → Recommandée: {alert['min_safe_version']}"
-				else:
-					title = alert.get('message', 'Alerte')
-					details = alert.get('file', '')
-
-				alerts_html += f"""
-				<div class="alert alert-{severity}">
-					<div class="alert-icon">{icon}</div>
-					<div class="alert-content">
-						<div class="alert-title">{title}</div>
-						<div class="alert-details">{details}</div>
-					</div>
-				</div>
-				"""
-
-		return f"""
-		<div class="section">
-			<div class="section-title">⚠️ Alertes de sécurité ({total})</div>
-			{filters_html}
-			<div class="alerts-container">
-				{alerts_html}
-			</div>
-		</div>
-		"""
-
 	def _generate_languages_chart(self, languages_data):
-		"""Génère le script Chart.js pour les langages."""
+		"""Generate Chart.js script for languages."""
 		if not languages_data:
 			return ""
 
@@ -981,7 +997,7 @@ class HTMLReportGenerator:
 						data: {data},
 						backgroundColor: {colors},
 						borderWidth: 1,
-						borderColor: '#d6d6d6',
+						borderColor: '#363b52',
 						hoverOffset: 8
 					}}]
 				}},
@@ -994,10 +1010,7 @@ class HTMLReportGenerator:
 							position: 'right',
 							labels: {{
 								padding: 15,
-								font: {{
-									size: 13,
-									family: "-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif"
-								}},
+								font: {{ size: 13 }},
 								usePointStyle: true,
 								pointStyle: 'circle',
 								boxWidth: 8
@@ -1010,17 +1023,8 @@ class HTMLReportGenerator:
 							borderColor: '#363b52',
 							borderWidth: 1,
 							padding: 12,
-							cornerRadius: 8,
-							bodyFont: {{
-								size: 13
-							}},
-							titleFont: {{
-								size: 14
-							}}
+							cornerRadius: 8
 						}}
-					}},
-					layout: {{
-						padding: 10
 					}}
 				}}
 			}});
@@ -1028,7 +1032,7 @@ class HTMLReportGenerator:
 		"""
 
 	def _generate_file_types_chart(self, file_types_data):
-		"""Génère le script Chart.js pour les types de fichiers."""
+		"""Generate Chart.js script for file types."""
 		if not file_types_data:
 			return ""
 
@@ -1043,11 +1047,10 @@ class HTMLReportGenerator:
 				data: {{
 					labels: {labels},
 					datasets: [{{
-						label: 'Nombre de fichiers',
+						label: 'File count',
 						data: {data},
 						backgroundColor: '#7c9ff5',
 						borderRadius: 8,
-						borderSkipped: false,
 						maxBarThickness: 60
 					}}]
 				}},
@@ -1056,56 +1059,19 @@ class HTMLReportGenerator:
 					maintainAspectRatio: true,
 					aspectRatio: 2,
 					plugins: {{
-						legend: {{
-							display: false
-						}},
+						legend: {{ display: false }},
 						tooltip: {{
 							backgroundColor: '#2a2f45',
-							titleColor: '#e8eaf0',
-							bodyColor: '#a3a8c3',
-							borderColor: '#363b52',
-							borderWidth: 1,
 							padding: 12,
-							cornerRadius: 8,
-							bodyFont: {{
-								size: 13
-							}},
-							titleFont: {{
-								size: 14
-							}}
+							cornerRadius: 8
 						}}
 					}},
 					scales: {{
-						x: {{
-							grid: {{
-								display: false
-							}},
-							ticks: {{
-								color: '#a3a8c3',
-								font: {{
-									size: 12
-								}}
-							}}
-						}},
+						x: {{ grid: {{ display: false }} }},
 						y: {{
 							beginAtZero: true,
-							grid: {{
-								color: '#363b52',
-								drawBorder: false
-							}},
-							ticks: {{
-								precision: 0,
-								color: '#a3a8c3',
-								font: {{
-									size: 12
-								}}
-							}}
-						}}
-					}},
-					layout: {{
-						padding: {{
-							top: 10,
-							bottom: 10
+							grid: {{ color: '#363b52' }},
+							ticks: {{ precision: 0 }}
 						}}
 					}}
 				}}
