@@ -1,12 +1,13 @@
 """
 Unified security score calculator.
 Takes into account security, Docker, and best practices.
+Works with both GitHub repos and local projects.
 """
 
 class SecurityScoreCalculator:
 	"""Calculates a unified security score from all scan results."""
 
-	def calculate_unified_score(self, security_results, docker_results, structure):
+	def calculate_unified_score(self, security_results, docker_results, structure, has_github_data=True):
 		"""
 		Calculate unified score out of 100.
 
@@ -14,6 +15,7 @@ class SecurityScoreCalculator:
 			security_results: Results from SecurityScanner
 			docker_results: Results from DockerScanner
 			structure: Repository structure info
+			has_github_data: Boolean indicating if GitHub API data is available
 
 		Returns:
 			dict: {
@@ -23,7 +25,8 @@ class SecurityScoreCalculator:
 				'docker_score': int,
 				'best_practices_score': int,
 				'breakdown': dict,
-				'description': str
+				'description': str,
+				'is_local_analysis': bool
 			}
 		"""
 		# 1. Security score (50% weight)
@@ -73,6 +76,11 @@ class SecurityScoreCalculator:
 			}
 		}
 
+		# Description avec note si analyse locale
+		description = self._get_score_description(total_score)
+		if not has_github_data:
+			description += " (Local analysis - limited metadata)"
+
 		return {
 			'total_score': total_score,
 			'grade': grade,
@@ -80,7 +88,8 @@ class SecurityScoreCalculator:
 			'docker_score': docker_score,
 			'best_practices_score': best_practices_score,
 			'breakdown': breakdown,
-			'description': self._get_score_description(total_score)
+			'description': description,
+			'is_local_analysis': not has_github_data
 		}
 
 	def _calculate_security_score(self, security_results):

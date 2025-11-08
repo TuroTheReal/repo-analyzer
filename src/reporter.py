@@ -67,9 +67,11 @@ class ReportGenerator:
 								contributors, structure, dependencies, security_results, docker_results):
 		"""Build markdown content."""
 
-		# Calculate unified score
+		# Calculate unified score with GitHub data flag
+		has_github_data = bool(languages) or bool(contributors)
+
 		score_data = self.score_calculator.calculate_unified_score(
-			security_results, docker_results, structure
+			security_results, docker_results, structure, has_github_data
 		)
 
 		# Header
@@ -80,6 +82,11 @@ class ReportGenerator:
 		# Unified Score
 		md += f"## 🎯 Security Score: {score_data['grade']} ({score_data['total_score']}/100)\n\n"
 		md += f"**{score_data['description']}**\n\n"
+
+		# Add local analysis note if applicable
+		if score_data.get('is_local_analysis'):
+			md += "> **Note:** This is a local analysis. GitHub metadata (stars, forks, contributors) is not available.\n\n"
+
 		md += "| Component | Score | Weight |\n"
 		md += "|-----------|-------|--------|\n"
 		md += f"| Security | {score_data['security_score']}/100 | 50% |\n"
@@ -90,8 +97,10 @@ class ReportGenerator:
 		# Table of contents
 		md += "## 📑 Table of Contents\n\n"
 		md += "- [Metadata](#metadata)\n"
-		md += "- [Languages](#languages)\n"
-		md += "- [Contributors](#contributors)\n"
+		if languages:
+			md += "- [Languages](#languages)\n"
+		if contributors:
+			md += "- [Contributors](#contributors)\n"
 		md += "- [Structure](#structure)\n"
 		md += "- [Best Practices](#best-practices)\n"
 		if docker_results['total'] > 0 or docker_results['dockerfiles'] or docker_results['compose_files']:
@@ -108,17 +117,25 @@ class ReportGenerator:
 
 		md += "| Metric | Value |\n"
 		md += "|--------|-------|\n"
-		md += f"| ⭐ Stars | {repo_info['stars']:,} |\n"
-		md += f"| 🍴 Forks | {repo_info['forks']:,} |\n"
-		md += f"| 👀 Watchers | {repo_info['watchers']:,} |\n"
-		md += f"| 🐛 Open issues | {repo_info['open_issues']} |\n"
+
+		# Safe display for GitHub-only metrics
+		stars = repo_info.get('stars')
+		forks = repo_info.get('forks')
+		watchers = repo_info.get('watchers')
+		open_issues = repo_info.get('open_issues')
+
+		md += f"| ⭐ Stars | {stars:,} |\n" if isinstance(stars, int) else "| ⭐ Stars | N/A |\n"
+		md += f"| 🍴 Forks | {forks:,} |\n" if isinstance(forks, int) else "| 🍴 Forks | N/A |\n"
+		md += f"| 👀 Watchers | {watchers:,} |\n" if isinstance(watchers, int) else "| 👀 Watchers | N/A |\n"
+		md += f"| 🛠 Open issues | {open_issues} |\n" if isinstance(open_issues, int) else "| 🛠 Open issues | N/A |\n"
+
 		md += f"| ⚖️ License | {repo_info['license']} |\n"
-		md += f"| 📅 Created | {repo_info['created_at'][:10]} |\n"
-		md += f"| 📝 Last update | {repo_info['updated_at'][:10]} |\n"
+		md += f"| 📅 Created | {repo_info['created_at'][:10] if repo_info['created_at'] != 'N/A' else 'N/A'} |\n"
+		md += f"| 🔄 Last update | {repo_info['updated_at'][:10] if repo_info['updated_at'] != 'N/A' else 'N/A'} |\n"
 		md += f"| 🌿 Default branch | {repo_info['default_branch']} |\n"
 		md += f"| 💾 Size | {repo_info['size'] / 1024:.1f} MB |\n\n"
 
-		# Languages
+		# Languages (only if available)
 		if languages:
 			md += "## 💻 Languages\n\n"
 			md += "```\n"
@@ -128,7 +145,7 @@ class ReportGenerator:
 				md += f"{lang:<15} {bar} {percent}%\n"
 			md += "```\n\n"
 
-		# Contributors
+		# Contributors (only if available)
 		if contributors:
 			md += "## 👥 Contributors\n\n"
 			md += "Top 5 contributors:\n\n"

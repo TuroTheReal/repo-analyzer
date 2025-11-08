@@ -43,10 +43,13 @@ class HTMLReportGenerator:
 
 		return filepath
 
-	def _calculate_security_score(self, security_results, docker_results, structure):
+	def _calculate_security_score(self, security_results, docker_results, structure, languages=None, contributors=None):
 		"""Calculate unified security score."""
+		# Déterminer si on a des données GitHub
+		has_github_data = bool(languages) or bool(contributors)
+
 		score_data = self.score_calculator.calculate_unified_score(
-			security_results, docker_results, structure
+			security_results, docker_results, structure, has_github_data
 		)
 		return score_data
 
@@ -452,7 +455,8 @@ class HTMLReportGenerator:
 			"""Build complete HTML content."""
 
 			# Calculate unified security score
-			score_data = self._calculate_security_score(security_results, docker_results, structure)
+			score_data = self._calculate_security_score(
+				security_results, docker_results, structure, languages, contributors)
 			total_score = score_data['total_score']
 			grade = score_data['grade']
 
@@ -490,7 +494,12 @@ class HTMLReportGenerator:
 					{contributors_html}
 				</div>
 			</div>
-			""" if contributors else ""
+			""" if contributors and len(contributors) > 0 else ""
+
+			# Helper functions for safe value display
+			def safe_int_display(value, default="N/A"):
+				"""Display integer value or N/A"""
+				return f"{value:,}" if isinstance(value, int) else default
 
 			html = f"""<!DOCTYPE html>
 		<html lang="en">
@@ -1034,12 +1043,12 @@ class HTMLReportGenerator:
 			<div class="stats-grid">
 				<div class="stat-card">
 					<div class="stat-icon">⭐</div>
-					<div class="stat-value">{repo_info['stars']:,}</div>
+					<div class="stat-value">{safe_int_display(repo_info.get('stars'))}</div>
 					<div class="stat-label">Stars</div>
 				</div>
 				<div class="stat-card">
 					<div class="stat-icon">🍴</div>
-					<div class="stat-value">{repo_info['forks']:,}</div>
+					<div class="stat-value">{safe_int_display(repo_info.get('forks'))}</div>
 					<div class="stat-label">Forks</div>
 				</div>
 				<div class="stat-card">
@@ -1048,8 +1057,8 @@ class HTMLReportGenerator:
 					<div class="stat-label">Files</div>
 				</div>
 				<div class="stat-card">
-					<div class="stat-icon">🐛</div>
-					<div class="stat-value">{repo_info['open_issues']}</div>
+					<div class="stat-icon">🛠</div>
+					<div class="stat-value">{safe_int_display(repo_info.get('open_issues'))}</div>
 					<div class="stat-label">Open issues</div>
 				</div>
 			</div>
@@ -1065,6 +1074,14 @@ class HTMLReportGenerator:
 					<p class="score-description">
 						{score_data['description']}
 					</p>
+					{f'''
+					<div style="margin-top: 1.5rem; padding: 1rem; background: rgba(124, 159, 245, 0.1); border-radius: 8px; border-left: 3px solid var(--accent-blue);">
+						<div style="font-size: 0.95rem; color: var(--text-secondary);">
+							<strong>ℹ️ Local Analysis Mode</strong><br>
+							This project was analyzed locally. GitHub metadata (stars, forks, contributors, languages) is not available.
+						</div>
+					</div>
+					''' if score_data.get('is_local_analysis') else ''}
 					<div class="score-breakdown">
 						<div class="breakdown-item">
 							<div class="breakdown-label">Security (50%)</div>
@@ -1082,10 +1099,15 @@ class HTMLReportGenerator:
 				</div>
 			</div>
 
-			<!-- Languages -->
-			{'<div class="section"><div class="section-title">💻 Languages</div><div class="chart-container"><div class="chart-wrapper"><canvas id="languagesChart"></canvas></div></div></div>' if languages else ''}
+			<!-- Languages (GitHub only) -->
+			{f'''
+			<div class="section">
+				<div class="section-title">💻 Languages</div>
+				<div class="chart-container"><div class="chart-wrapper"><canvas id="languagesChart"></canvas></div></div>
+			</div>
+			''' if languages and len(languages) > 0 else ''}
 
-			<!-- Contributors -->
+			<!-- Contributors (GitHub only) -->
 			{contributors_section}
 
 			<!-- Structure -->

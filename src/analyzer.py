@@ -3,6 +3,7 @@ Analyse locale d'un repository cloné ou local.
 """
 
 import os
+import re
 import tempfile
 import shutil
 from pathlib import Path
@@ -83,7 +84,7 @@ class RepoAnalyzer:
 
 	def analyze_structure(self):
 		"""
-		Analyse la structure du repo.
+		Analyse la structure du repo (VERSION AMÉLIORÉE).
 
 		Returns:
 			dict: Statistiques sur la structure
@@ -101,7 +102,8 @@ class RepoAnalyzer:
 			"max_depth": 0,
 			"has_tests": False,
 			"has_ci": False,
-			"has_docker": False
+			"has_docker": False,
+			"test_details": {}  # NEW: Détails sur les tests trouvés
 		}
 
 		# Fichiers importants à détecter
@@ -129,9 +131,12 @@ class RepoAnalyzer:
 
 			stats["total_dirs"] += len(dirs)
 
-			# Détecter dossiers spéciaux
-			if 'test' in [d.lower() for d in dirs] or 'tests' in [d.lower() for d in dirs]:
-				stats["has_tests"] = True
+			# AMÉLIORATION: Détection tests robuste
+			if not stats["has_tests"]:
+				test_result = self._detect_tests_in_directory(root, dirs, files)
+				if test_result['found']:
+					stats["has_tests"] = True
+					stats["test_details"] = test_result
 
 			for file in files:
 				stats["total_files"] += 1
@@ -161,7 +166,132 @@ class RepoAnalyzer:
 
 		console.print(f"[green]✓[/green] Structure analyzed: {stats['total_files']:,} files")
 
+		# Afficher info tests si trouvés
+		if stats["has_tests"]:
+			test_type = stats["test_details"].get('type', 'unknown')
+			console.print(f"[green]✓[/green] Tests detected: {test_type}")
+
 		return stats
+
+	def _detect_tests_in_directory(self, root, dirs, files):
+		"""
+		Détection robuste des tests (dossiers + fichiers).
+
+		Args:
+			root: Chemin du dossier actuel
+			dirs: Liste des sous-dossiers
+			files: Liste des fichiers
+
+		Returns:
+			dict: {'found': bool, 'type': str, 'location': str}
+		"""
+		result = {
+			'found': False,
+			'type': None,
+			'location': None
+		}
+
+		# ===== 1. DÉTECTION PAR DOSSIER =====
+		test_dir_names = [
+			'test', 'tests', '__tests__',
+			'spec', 'specs',
+			'e2e', 'integration',
+			'unit', 'unittest'
+		]
+
+		for dir_name in dirs:
+			if dir_name.lower() in test_dir_names:
+				result['found'] = True
+				result['type'] = f'Test directory ({dir_name}/)'
+				result['location'] = os.path.relpath(os.path.join(root, dir_name), self.repo_path)
+				return result
+
+		# ===== 2. DÉTECTION PAR FICHIERS (patterns) =====
+		test_file_patterns = {
+			# Python
+			r'^test_.*\.py$': 'Python tests (test_*.py)',
+			r'^.*_test\.py$': 'Python tests (*_test.py)',
+			r'^test.*\.py$': 'Python tests (test*.py)',
+
+			# JavaScript / TypeScript
+			r'^.*\.spec\.(js|ts|jsx|tsx)$': 'JS/TS spec files (*.spec.js)',
+			r'^.*\.test\.(js|ts|jsx|tsx)$': 'JS/TS test files (*.test.js)',
+
+			# Go
+			r'^.*_test\.go$': 'Go tests (*_test.go)',
+
+			# Ruby
+			r'^.*_spec\.rb$': 'Ruby specs (*_spec.rb)',
+			r'^test_.*\.rb$': 'Ruby tests (test_*.rb)',
+
+			# Java
+			r'^.*Test\.java$': 'Java tests (*Test.java)',
+			r'^Test.*\.java$': 'Java tests (Test*.java)',
+
+			# PHP
+			r'^.*Test\.php$': 'PHP tests (*Test.php)',
+
+			# Rust
+			r'^.*_test\.rs$': 'Rust tests (*_test.rs)',
+		}
+
+		for file_name in files:
+			for pattern, test_type in test_file_patterns.items():
+				if re.match(pattern, file_name, re.IGNORECASE):
+					result['found'] = True
+					result['type'] = test_type
+					result['location'] = os.path.relpath(os.path.join(root, file_name), self.repo_path)
+					return result
+
+		# ===== 3. DÉTECTION PAR FRAMEWORKS (si imports détectés) =====
+		# Scan quelques fichiers pour détecter frameworks de test
+		for file_name in files:
+			if file_name.endswith('.py'):
+				file_path = os.path.join(root, file_name)
+				framework = self._detect_test_framework_in_file(file_path)
+				if framework:
+					result['found'] = True
+					result['type'] = f'{framework} tests'
+					result['location'] = os.path.relpath(file_path, self.repo_path)
+					return result
+
+		return result
+
+	def _detect_test_framework_in_file(self, file_path):
+		"""
+		Détecter si un fichier contient des imports de frameworks de test.
+
+		Args:
+			file_path: Chemin du fichier à analyser
+
+		Returns:
+			str: Nom du framework détecté (ex: 'pytest', 'unittest') ou None
+		"""
+		try:
+			with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
+				content = f.read(2000)  # Lire seulement le début
+
+			# Patterns de frameworks
+			frameworks = {
+				'pytest': [r'import pytest', r'from pytest'],
+				'unittest': [r'import unittest', r'from unittest'],
+				'nose': [r'import nose', r'from nose'],
+				'jest': [r'describe\(', r'test\(', r'it\('],
+				'mocha': [r'describe\(', r'it\('],
+				'jasmine': [r'describe\(', r'it\(', r'expect\('],
+				'go test': [r'func Test', r't \*testing\.T'],
+				'rspec': [r'describe ', r'context ', r'it '],
+			}
+
+			for framework, patterns in frameworks.items():
+				for pattern in patterns:
+					if re.search(pattern, content, re.IGNORECASE):
+						return framework
+
+		except:
+			pass
+
+		return None
 
 	def find_dependencies(self):
 		"""
