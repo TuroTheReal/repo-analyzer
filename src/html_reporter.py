@@ -85,6 +85,184 @@ class HTMLReportGenerator:
 			'data': list(top_types.values())
 		}
 
+	def _generate_best_practices_section(self, structure, security_results, score_data):
+		"""Generate best practices section with detailed breakdown."""
+
+		best_practices_score = score_data['best_practices_score']
+
+		# Check each practice
+		has_tests = structure.get('has_tests')
+		has_ci = structure.get('has_ci')
+		has_proper_gitignore = not any(
+			a['type'] in ['incomplete_gitignore', 'missing_gitignore']
+			for a in security_results['low']
+		)
+		no_secrets = not any(
+			a['type'] == 'secret_exposed'
+			for a in security_results['critical'] + security_results['high']
+		)
+
+		# Calculate individual scores
+		test_score = 30 if has_tests else 0
+		ci_score = 25 if has_ci else 0
+		gitignore_score = 20 if has_proper_gitignore else 0
+		secrets_score = 25 if no_secrets else 0
+
+		# Build HTML
+		html = f"""
+		<div class="section">
+			<div class="section-title">✨ Best Practices</div>
+
+			<div class="security-score" style="padding: 2rem 0;">
+				<div style="text-align: center; margin-bottom: 2rem;">
+					<div style="font-size: 3rem; font-weight: 700; color: {'var(--accent-green)' if best_practices_score >= 75 else 'var(--accent-yellow)' if best_practices_score >= 50 else 'var(--accent-red)'};">
+						{best_practices_score}/100
+					</div>
+					<div style="color: var(--text-secondary); margin-top: 0.5rem;">
+						Best Practices Score
+					</div>
+				</div>
+
+				<!-- Practices Grid -->
+				<div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 1.5rem; margin-top: 2rem;">
+
+					<!-- Testing -->
+					<div class="info-item" style="border-left: 4px solid {'var(--accent-green)' if has_tests else 'var(--accent-red)'};">
+						<div style="display: flex; align-items: center; gap: 0.75rem; margin-bottom: 1rem;">
+							<div style="font-size: 2rem;">🧪</div>
+							<div>
+								<div style="font-weight: 600; font-size: 1.1rem;">Testing</div>
+								<div style="color: var(--text-secondary); font-size: 0.9rem;">{test_score}/30 points</div>
+							</div>
+						</div>
+						<div style="color: var(--text-secondary); font-size: 0.95rem; line-height: 1.5;">
+							{'✅ Test directory detected. Great job maintaining code quality!' if has_tests else '❌ No test directory found. Consider adding tests with pytest (Python) or Jest (JavaScript).'}
+						</div>
+					</div>
+
+					<!-- CI/CD -->
+					<div class="info-item" style="border-left: 4px solid {'var(--accent-green)' if has_ci else 'var(--accent-red)'};">
+						<div style="display: flex; align-items: center; gap: 0.75rem; margin-bottom: 1rem;">
+							<div style="font-size: 2rem;">🔄</div>
+							<div>
+								<div style="font-weight: 600; font-size: 1.1rem;">CI/CD</div>
+								<div style="color: var(--text-secondary); font-size: 0.9rem;">{ci_score}/25 points</div>
+							</div>
+						</div>
+						<div style="color: var(--text-secondary); font-size: 0.95rem; line-height: 1.5;">
+							{'✅ CI/CD configuration detected. Automated workflows are active!' if has_ci else '❌ No CI/CD found. Set up GitHub Actions or GitLab CI for automated testing.'}
+						</div>
+					</div>
+
+					<!-- .gitignore -->
+					<div class="info-item" style="border-left: 4px solid {'var(--accent-green)' if has_proper_gitignore else 'var(--accent-yellow)'};">
+						<div style="display: flex; align-items: center; gap: 0.75rem; margin-bottom: 1rem;">
+							<div style="font-size: 2rem;">📝</div>
+							<div>
+								<div style="font-weight: 600; font-size: 1.1rem;">.gitignore</div>
+								<div style="color: var(--text-secondary); font-size: 0.9rem;">{gitignore_score}/20 points</div>
+							</div>
+						</div>
+						<div style="color: var(--text-secondary); font-size: 0.95rem; line-height: 1.5;">
+							{'✅ Proper .gitignore configuration. Repository is clean!' if has_proper_gitignore else '⚠️ Issues with .gitignore. Add patterns for .env, *.log, node_modules/, etc.'}
+						</div>
+					</div>
+
+					<!-- Secret Management -->
+					<div class="info-item" style="border-left: 4px solid {'var(--accent-green)' if no_secrets else 'var(--accent-red)'};">
+						<div style="display: flex; align-items: center; gap: 0.75rem; margin-bottom: 1rem;">
+							<div style="font-size: 2rem;">🔐</div>
+							<div>
+								<div style="font-weight: 600; font-size: 1.1rem;">Secret Management</div>
+								<div style="color: var(--text-secondary); font-size: 0.9rem;">{secrets_score}/25 points</div>
+							</div>
+						</div>
+						<div style="color: var(--text-secondary); font-size: 0.95rem; line-height: 1.5;">
+							{'✅ No exposed secrets detected. Excellent security!' if no_secrets else '🚨 CRITICAL: Secrets exposed! Immediately revoke credentials and use environment variables.'}
+						</div>
+					</div>
+
+				</div>
+
+				<!-- Detailed Recommendations -->
+				<div style="margin-top: 2.5rem; background: var(--bg-tertiary); padding: 2rem; border-radius: 12px;">
+					<div style="font-weight: 600; font-size: 1.2rem; margin-bottom: 1rem; display: flex; align-items: center; gap: 0.5rem;">
+						<span>💡</span> Recommendations
+					</div>
+					<div style="display: grid; gap: 1rem;">
+		"""
+
+		# Add specific recommendations
+		if not has_tests:
+			html += """
+						<div style="padding: 1rem; background: var(--bg-secondary); border-radius: 8px; border-left: 3px solid var(--accent-yellow);">
+							<div style="font-weight: 600; margin-bottom: 0.5rem;">Add automated testing</div>
+							<div style="color: var(--text-secondary); font-size: 0.9rem; line-height: 1.5;">
+								Create a <code class="code">tests/</code> directory and write unit tests. This improves code quality and catches bugs early.
+								<br><strong>Quick start:</strong> Python → pytest, JavaScript → Jest, Go → built-in testing
+							</div>
+						</div>
+			"""
+
+		if not has_ci:
+			html += """
+						<div style="padding: 1rem; background: var(--bg-secondary); border-radius: 8px; border-left: 3px solid var(--accent-yellow);">
+							<div style="font-weight: 600; margin-bottom: 0.5rem;">Set up CI/CD pipeline</div>
+							<div style="color: var(--text-secondary); font-size: 0.9rem; line-height: 1.5;">
+								Automate testing, linting, and deployments with GitHub Actions (<code class="code">.github/workflows/</code>) or GitLab CI (<code class="code">.gitlab-ci.yml</code>).
+								<br><strong>Benefits:</strong> Automatic code quality checks, faster deployments
+							</div>
+						</div>
+			"""
+
+		if not has_proper_gitignore:
+			html += """
+						<div style="padding: 1rem; background: var(--bg-secondary); border-radius: 8px; border-left: 3px solid var(--accent-yellow);">
+							<div style="font-weight: 600; margin-bottom: 0.5rem;">Fix .gitignore configuration</div>
+							<div style="color: var(--text-secondary); font-size: 0.9rem; line-height: 1.5;">
+								Add essential patterns: <code class="code">.env</code>, <code class="code">*.log</code>, <code class="code">node_modules/</code>, <code class="code">__pycache__/</code>, <code class="code">*.pyc</code>
+								<br><strong>Why:</strong> Prevents committing sensitive files and reduces repository size
+							</div>
+						</div>
+			"""
+
+		if not no_secrets:
+			secret_count = len([a for a in security_results['critical'] + security_results['high'] if a['type'] == 'secret_exposed'])
+			html += f"""
+						<div style="padding: 1rem; background: rgba(245, 153, 141, 0.1); border-radius: 8px; border-left: 3px solid var(--accent-red);">
+							<div style="font-weight: 600; margin-bottom: 0.5rem; color: var(--accent-red);">🚨 URGENT: Remove exposed secrets</div>
+							<div style="color: var(--text-secondary); font-size: 0.9rem; line-height: 1.5;">
+								<strong>{secret_count} secret(s) detected</strong> in your codebase. Take immediate action:
+								<br>1. Revoke/rotate all exposed credentials
+								<br>2. Remove from git history (use BFG Repo-Cleaner)
+								<br>3. Use environment variables or secret managers (AWS Secrets Manager, HashiCorp Vault)
+							</div>
+						</div>
+			"""
+
+		# If everything is perfect
+		if has_tests and has_ci and has_proper_gitignore and no_secrets:
+			html += """
+						<div style="padding: 1.5rem; background: rgba(125, 211, 176, 0.1); border-radius: 8px; text-align: center; border: 2px solid var(--accent-green);">
+							<div style="font-size: 2.5rem; margin-bottom: 0.5rem;">🎉</div>
+							<div style="font-weight: 600; color: var(--accent-green); font-size: 1.1rem;">
+								Perfect! All best practices followed
+							</div>
+							<div style="color: var(--text-secondary); margin-top: 0.5rem; font-size: 0.9rem;">
+								Your project demonstrates excellent software engineering practices
+							</div>
+						</div>
+			"""
+
+		html += """
+					</div>
+				</div>
+			</div>
+		</div>
+		"""
+
+		return html
+
 	def _generate_docker_section(self, docker_results):
 		"""Generate Docker configuration section."""
 		if not docker_results['dockerfiles'] and not docker_results['compose_files']:
@@ -285,6 +463,7 @@ class HTMLReportGenerator:
 			# Generate sections
 			docker_section = self._generate_docker_section(docker_results)
 			security_section = self._generate_security_section(security_results)
+			best_practices_section = self._generate_best_practices_section(structure, security_results, score_data)
 
 			# Build contributors section
 			contributors_html = ""
@@ -935,6 +1114,9 @@ class HTMLReportGenerator:
 				</div>
 				{('<div class="chart-container"><div class="chart-wrapper"><canvas id="fileTypesChart"></canvas></div></div>' if file_types_data else '')}
 			</div>
+
+			<!-- Best Practices -->
+			{best_practices_section}
 
 			<!-- Docker Configuration -->
 			{docker_section}
