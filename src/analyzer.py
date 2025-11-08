@@ -1,5 +1,5 @@
 """
-Analyse locale d'un repository cloné.
+Analyse locale d'un repository cloné ou local.
 """
 
 import os
@@ -13,28 +13,57 @@ from rich.progress import track
 console = Console()
 
 class RepoAnalyzer:
-	"""Analyse la structure d'un repo cloné."""
+	"""Analyse la structure d'un repo cloné ou local."""
 
-	def __init__(self, clone_url, repo_name):
+	def __init__(self, clone_url, repo_name, local_path=None):
 		"""
 		Args:
-			clone_url: URL de clone (depuis l'API)
+			clone_url: URL de clone (depuis l'API) - None pour local
 			repo_name: Nom du repo (pour le dossier)
+			local_path: Chemin local du projet (None pour GitHub)
 		"""
-
 		self.clone_url = clone_url
 		self.repo_name = repo_name
+		self.local_path = local_path
 		self.temp_dir = None
-		self.repo_path = None
+
+		# Determine if this is local or needs cloning
+		if local_path:
+			self.repo_path = os.path.abspath(local_path)
+			self.is_local = True
+		else:
+			self.repo_path = None
+			self.is_local = False
+
+	def prepare(self):
+		"""Prepare the repository for analysis (validate local path)."""
+		if not self.is_local:
+			# Should use clone_repo() instead
+			return False
+
+		# Validate local path exists
+		if not os.path.exists(self.repo_path):
+			console.print(f"[red]✗ Local path does not exist: {self.repo_path}[/red]")
+			return False
+
+		if not os.path.isdir(self.repo_path):
+			console.print(f"[red]✗ Path is not a directory: {self.repo_path}[/red]")
+			return False
+
+		console.print(f"[green]✓[/green] Using local directory: {self.repo_path}")
+		return True
 
 	def clone_repo(self):
-		"""Clone le repo dans un dossier temporaire."""
+		"""Clone le repo dans un dossier temporaire (GitHub only)."""
+		if self.is_local:
+			console.print(f"[green]✓[/green] Using local directory: {self.repo_path}")
+			return True
 
 		try:
-			self.temp_dir = tempfile.mkdtemp(prefix="gh_analyzer")
+			self.temp_dir = tempfile.mkdtemp(prefix="gh_analyzer_")
 			self.repo_path = os.path.join(self.temp_dir, self.repo_name)
 
-			console.print(f"[yellow]⏳ Clone du repo (shallow)...[/yellow]")
+			console.print(f"[yellow]⏳ Cloning repository (shallow)...[/yellow]")
 
 			# Clone shallow (depth=1) = seulement le dernier commit
 			# Plus rapide et moins lourd
@@ -45,14 +74,12 @@ class RepoAnalyzer:
 				single_branch=True  # Seulement la branche principale
 			)
 
-
-			console.print(f"[green]✓[/green] Cloné dans {self.temp_dir}")
+			console.print(f"[green]✓[/green] Cloned to {self.temp_dir}")
 			return True
 
 		except Exception as e:
-			console.print(f"[red]✗ Erreur clone: {e}[/red]")
+			console.print(f"[red]✗ Clone error: {e}[/red]")
 			return False
-
 
 	def analyze_structure(self):
 		"""
@@ -64,7 +91,7 @@ class RepoAnalyzer:
 		if not self.repo_path or not os.path.exists(self.repo_path):
 			return {}
 
-		console.print("[yellow]⏳ Analyse de la structure...[/yellow]")
+		console.print("[yellow]⏳ Analyzing structure...[/yellow]")
 
 		stats = {
 			"important_files": [],
@@ -132,6 +159,8 @@ class RepoAnalyzer:
 			sorted(stats["file_types"].items(), key=lambda x: x[1], reverse=True)
 		)
 
+		console.print(f"[green]✓[/green] Structure analyzed: {stats['total_files']:,} files")
+
 		return stats
 
 	def find_dependencies(self):
@@ -139,12 +168,12 @@ class RepoAnalyzer:
 		Trouve et parse les fichiers de dépendances.
 
 		Returns:
-			dict: {"type": "python", "dependencies": [...]}
+			dict: {"python": [...], "nodejs": [...], ...}
 		"""
 		if not self.repo_path:
 			return {}
 
-		console.print("[yellow]⏳ Recherche des dépendances...[/yellow]")
+		console.print("[yellow]⏳ Searching for dependencies...[/yellow]")
 
 		deps = {}
 
@@ -159,8 +188,9 @@ class RepoAnalyzer:
 						for line in lines
 						if line.strip() and not line.startswith('#')
 					][:10]  # Limiter à 10 pour l'affichage
-			except:
-				pass
+				console.print(f"[green]✓[/green] Found Python dependencies: {len(deps['python'])} packages")
+			except Exception as e:
+				console.print(f"[yellow]⚠[/yellow] Error reading requirements.txt: {e}")
 
 		# Node.js - package.json
 		pkg_file = os.path.join(self.repo_path, "package.json")
@@ -169,16 +199,29 @@ class RepoAnalyzer:
 				import json
 				with open(pkg_file, 'r', encoding='utf-8') as f:
 					data = json.load(f)
-					deps["nodejs"] = list(data.get("dependencies", {}).keys())[:10]
-			except:
-				pass
+					node_deps = list(data.get("dependencies", {}).keys())[:10]
+					if node_deps:
+						deps["nodejs"] = node_deps
+						console.print(f"[green]✓[/green] Found Node.js dependencies: {len(deps['nodejs'])} packages")
+			except Exception as e:
+				console.print(f"[yellow]⚠[/yellow] Error reading package.json: {e}")
 
+		if not deps:
+			console.print("[dim]ℹ No dependency files found[/dim]")
+
+		return deps
 
 	def cleanup(self):
-			"""Supprime le dossier temporaire."""
-			if self.temp_dir and os.path.exists(self.temp_dir):
-				try:
-					shutil.rmtree(self.temp_dir)
-					console.print(f"[dim]✓ Nettoyage terminé[/dim]")
-				except Exception as e:
-					console.print(f"[yellow]⚠ Erreur nettoyage: {e}[/yellow]")
+		"""Supprime le dossier temporaire (GitHub only)."""
+		if self.is_local:
+			# NEVER delete local directories!
+			console.print(f"[dim]✓ Local analysis - no cleanup needed[/dim]")
+			return
+
+		# Only cleanup temporary cloned repos
+		if self.temp_dir and os.path.exists(self.temp_dir):
+			try:
+				shutil.rmtree(self.temp_dir)
+				console.print(f"[dim]✓ Cleanup complete[/dim]")
+			except Exception as e:
+				console.print(f"[yellow]⚠ Cleanup error: {e}[/yellow]")
