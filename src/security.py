@@ -6,6 +6,12 @@ IMPROVEMENTS:
 - Improved entropy calculation for generic patterns
 - File extension validation
 - Better .env file handling
+- Integration with Trivy and dependency auditors
+- Deduplication of vulnerability findings
+
+CHANGEMENTS:
+- Suppression des détections de vulnérabilités de dépendances (géré par Trivy + auditors)
+- Focus sur la détection de secrets exposés et fichiers sensibles
 """
 
 import os
@@ -34,7 +40,7 @@ PENALTY_LOW = 1
 MIN_SECRET_LENGTH = 12
 
 class SecurityScanner:
-	"""Advanced security scanner for detecting secrets, sensitive files, and vulnerabilities."""
+	"""Advanced security scanner for detecting secrets and sensitive files."""
 
 	SECRET_PATTERNS = {
 		# AWS
@@ -221,7 +227,7 @@ class SecurityScanner:
 
 		console.print(f"[green]✓[/green] Scan complete: {results['total']} alerts ({self.stats['files_scanned']} files scanned)")
 		if self.stats['false_positives_filtered'] > 0:
-			console.print(f"[dim]  ℹ Filtered {self.stats['false_positives_filtered']} false positives[/dim]")
+			console.print(f"[dim]  ℹ️  Filtered {self.stats['false_positives_filtered']} false positives[/dim]")
 
 		return results
 

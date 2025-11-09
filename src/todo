@@ -1,0 +1,13 @@
+que fait mon code + que fait trivy ? scan bien le code et fait moi un tableau de ce que mon code fait SANS trivy vs trivy fais
+
+je veux que tu fusionne mon code et trivy, le meilleur des deux monde, pense au fallback si trivy pas installe, je veux quand meme un check minimum,
+noublie pas dupdate tous les fichiers si besoin (notamment reporter ou score calculator)
+si pas de trivy fait un scan de base pour tout ce que trivy et cense faire de maniere pousser, attention au fake positive
+utilise la base de code presente, restructure les fichiers au besoin. redonne moi la totalite des fichiers sauf si fichiers inchange
+adapte le makefile si besoin
+ps, le hover du doughnut est bug, rogner par le conteneur parent je crois
+
+si .env mmais pas avec dedans -> .env.local alors ne pas mettre security alert
+Hover du donut rogner du conteneur
+gestion des secrets
+gestion des tests

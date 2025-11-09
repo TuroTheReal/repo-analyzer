@@ -8,6 +8,8 @@ IMPROVEMENTS:
 - Better error handling
 - Enhanced statistics display
 - Improved user feedback
+- Integration with Trivy and dependency auditors
+- Merged vulnerability results
 """
 
 import sys
@@ -19,6 +21,8 @@ from github_api import GitHubAPI
 from analyzer import RepoAnalyzer
 from security import SecurityScanner
 from docker_scanner import DockerScanner
+from trivy_api import TrivyScanner
+from dependency_scanner import DependencyScanner
 from reporter import ReportGenerator
 
 console = Console()
@@ -71,6 +75,48 @@ def get_directory_size(path):
 		pass
 	return total_size
 
+def merge_vulnerability_results(security_results, trivy_results, audit_results):
+	"""
+	Merge vulnerability results from all sources.
+
+	CHANGEMENT: Trivy et auditors remplacent la détection de vulnérabilités.
+	Security scanner se concentre sur les secrets exposés et fichiers sensibles.
+	"""
+	# Start with security scanner results (secrets + sensitive files)
+	merged = {
+		'critical': list(security_results['critical']),
+		'high': list(security_results['high']),
+		'medium': list(security_results['medium']),
+		'low': list(security_results['low']),
+		'total': security_results['total'],
+		'stats': security_results.get('stats', {}),
+		'sources': {
+			'security_scanner': security_results['total'],
+			'trivy': 0,
+			'dependency_audit': 0
+		}
+	}
+
+	# Add Trivy vulnerabilities
+	if trivy_results and trivy_results.get('total', 0) > 0:
+		for severity in ['critical', 'high', 'medium', 'low']:
+			for vuln in trivy_results.get(severity, []):
+				merged[severity].append(vuln)
+				merged['total'] += 1
+		merged['sources']['trivy'] = trivy_results['total']
+
+	# Add dependency audit vulnerabilities
+	if audit_results:
+		for lang, audit_data in audit_results.items():
+			if audit_data and audit_data.get('total', 0) > 0:
+				for vuln in audit_data.get('vulnerabilities', []):
+					severity = vuln.get('severity', 'medium')
+					merged[severity].append(vuln)
+					merged['total'] += 1
+				merged['sources']['dependency_audit'] += audit_data['total']
+
+	return merged
+
 def display_security_results(security_results):
 	"""Display security scan results with enhanced formatting."""
 	total = security_results['total']
@@ -105,6 +151,10 @@ def display_security_results(security_results):
 					sample = f"{alert['file']}:{alert['line']}"
 				elif alert["type"] == "sensitive_file":
 					sample = alert['file']
+				elif alert["type"] == "vulnerability":
+					sample = f"{alert.get('package', 'N/A')} ({alert.get('cve_id', 'N/A')})"
+				elif alert["type"] == "dependency_vulnerability":
+					sample = f"{alert.get('package', 'N/A')} ({alert.get('cve_id', 'N/A')})"
 				else:
 					sample = alert.get('file', 'N/A')
 
@@ -115,7 +165,12 @@ def display_security_results(security_results):
 	# Show stats if available
 	if 'stats' in security_results:
 		stats = security_results['stats']
-		console.print(f"\n[dim]📊 Scanned {stats['files_scanned']} files, filtered {stats['false_positives_filtered']} false positives[/dim]")
+		console.print(f"\n[dim]📊 Scanned {stats.get('files_scanned', 0)} files, filtered {stats.get('false_positives_filtered', 0)} false positives[/dim]")
+
+	# Show sources breakdown
+	if 'sources' in security_results:
+		sources = security_results['sources']
+		console.print(f"[dim]📦 Sources: Security={sources.get('security_scanner', 0)}, Trivy={sources.get('trivy', 0)}, Audits={sources.get('dependency_audit', 0)}[/dim]")
 
 def display_docker_results(docker_results):
 	"""Display Docker analysis results with enhanced formatting."""
@@ -191,9 +246,20 @@ def analyze_github_repo(url):
 		structure = analyzer.analyze_structure()
 		dependencies = analyzer.find_dependencies()
 
-		# Security scan
+		# Security scan (secrets + sensitive files)
 		scanner = SecurityScanner(analyzer.repo_path)
 		security_results = scanner.scan()
+
+		# Trivy scan (CVE vulnerabilities)
+		trivy_scanner = TrivyScanner(analyzer.repo_path)
+		trivy_results = trivy_scanner.scan_filesystem()
+
+		# Dependency audits (language-specific)
+		auditor = DependencyScanner(analyzer.repo_path)
+		audit_results = auditor.audit_all()
+
+		# Merge all vulnerability results
+		merged_security = merge_vulnerability_results(security_results, trivy_results, audit_results)
 
 		# Docker analysis
 		docker_scanner = DockerScanner(analyzer.repo_path)
@@ -205,12 +271,12 @@ def analyze_github_repo(url):
 
 		md_path = reporter.generate_markdown(
 			owner, repo, repo_info, languages, contributors,
-			structure, dependencies, security_results, docker_results
+			structure, dependencies, merged_security, docker_results
 		)
 
 		html_path = reporter.generate_html(
 			owner, repo, repo_info, languages, contributors,
-			structure, dependencies, security_results, docker_results
+			structure, dependencies, merged_security, docker_results
 		)
 
 		# Display summary
@@ -228,7 +294,7 @@ def analyze_github_repo(url):
 		display_test_info(structure)
 
 		# Results
-		display_security_results(security_results)
+		display_security_results(merged_security)
 		display_docker_results(docker_results)
 
 		# Reports
@@ -286,9 +352,20 @@ def analyze_local_repo(path):
 		structure = analyzer.analyze_structure()
 		dependencies = analyzer.find_dependencies()
 
-		# Security scan
+		# Security scan (secrets + sensitive files)
 		scanner = SecurityScanner(analyzer.repo_path)
 		security_results = scanner.scan()
+
+		# Trivy scan (CVE vulnerabilities)
+		trivy_scanner = TrivyScanner(analyzer.repo_path)
+		trivy_results = trivy_scanner.scan_filesystem()
+
+		# Dependency audits (language-specific)
+		auditor = DependencyScanner(analyzer.repo_path)
+		audit_results = auditor.audit_all()
+
+		# Merge all vulnerability results
+		merged_security = merge_vulnerability_results(security_results, trivy_results, audit_results)
 
 		# Docker analysis
 		docker_scanner = DockerScanner(analyzer.repo_path)
@@ -300,12 +377,12 @@ def analyze_local_repo(path):
 
 		md_path = reporter.generate_markdown(
 			"local", repo_name, repo_info, languages, contributors,
-			structure, dependencies, security_results, docker_results
+			structure, dependencies, merged_security, docker_results
 		)
 
 		html_path = reporter.generate_html(
 			"local", repo_name, repo_info, languages, contributors,
-			structure, dependencies, security_results, docker_results
+			structure, dependencies, merged_security, docker_results
 		)
 
 		# Display summary
@@ -321,7 +398,7 @@ def analyze_local_repo(path):
 		display_test_info(structure)
 
 		# Results
-		display_security_results(security_results)
+		display_security_results(merged_security)
 		display_docker_results(docker_results)
 
 		# Reports

@@ -342,7 +342,7 @@ class HTMLReportGenerator:
 		"""
 
 	def _generate_security_section(self, security_results):
-		"""Generate security section with alerts. ENHANCED: Better .env file display."""
+		"""Generate security section with alerts. FIXED: No nested displays, proper escaping."""
 		total = security_results['total']
 
 		if total == 0:
@@ -386,25 +386,55 @@ class HTMLReportGenerator:
 			"low": "🔵"
 		}
 
+		def escape_html(text):
+			"""Escape HTML special characters."""
+			if not text:
+				return ""
+			return str(text).replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;').replace('"', '&quot;').replace("'", '&#39;')
+
 		for severity in ["critical", "high", "medium", "low"]:
 			for alert in security_results.get(severity, []):
 				icon = severity_icons[severity]
 
+				# Build title and details safely
 				if alert["type"] == "secret_exposed":
-					title = f"{alert['secret_type'].replace('_', ' ').title()} detected"
-					details = f"<span class='code'>{alert['file']}:{alert['line']}</span><br>{alert['preview'][:100]}..."
+					title = escape_html(f"{alert['secret_type'].replace('_', ' ').title()} detected")
+					file_line = escape_html(f"{alert['file']}:{alert['line']}")
+					preview = escape_html(alert['preview'][:100])
+					details = f"<span class='code'>{file_line}</span><br>{preview}..."
+
 				elif alert["type"] == "sensitive_file":
-					title = f"Sensitive file: {alert['file']}"
-					details = alert['message']
-					# ENHANCED: Add recommendation if present
+					title = escape_html(f"Sensitive file: {alert['file']}")
+					message = escape_html(alert['message'])
+					details = message
+					# Add recommendation as plain text, no nested divs
 					if 'recommendation' in alert:
-						details += f"<br><div style='margin-top: 0.5rem; padding: 0.75rem; background: var(--bg-secondary); border-radius: 6px; border-left: 3px solid var(--accent-yellow);'><strong>💡 Best Practice:</strong> {alert['recommendation']}</div>"
-				elif alert["type"] == "outdated_dependency":
-					title = f"Outdated dependency: {alert['package']}"
-					details = f"Current version: {alert['current_version']} → Recommended: {alert['min_safe_version']}"
+						rec = escape_html(alert['recommendation'])
+						details += f"<br><br><strong>💡 Best Practice:</strong><br>{rec}"
+
+				elif alert["type"] == "vulnerability":
+					# Trivy vulnerability
+					pkg = escape_html(alert.get('package', 'unknown'))
+					cve = escape_html(alert.get('cve_id', 'N/A'))
+					title = f"Vulnerability: {pkg}"
+					installed = escape_html(alert.get('installed_version', 'unknown'))
+					fixed = escape_html(alert.get('fixed_version', 'N/A'))
+					desc = escape_html(alert.get('description', '')[:200])
+					details = f"<strong>CVE:</strong> {cve}<br><strong>Installed:</strong> {installed}<br><strong>Fixed:</strong> {fixed}<br><br>{desc}"
+
+				elif alert["type"] == "dependency_vulnerability":
+					# Dependency audit vulnerability
+					pkg = escape_html(alert.get('package', 'unknown'))
+					cve = escape_html(alert.get('cve_id', 'N/A'))
+					title = f"Dependency vulnerability: {pkg}"
+					installed = escape_html(alert.get('installed_version', 'unknown'))
+					fixed = escape_html(alert.get('fixed_version', 'N/A'))
+					desc = escape_html(alert.get('description', '')[:200])
+					details = f"<strong>CVE:</strong> {cve}<br><strong>Installed:</strong> {installed}<br><strong>Fixed:</strong> {fixed}<br><br>{desc}"
+
 				else:
-					title = alert.get('message', 'Alert')
-					details = alert.get('file', '')
+					title = escape_html(alert.get('message', 'Alert'))
+					details = escape_html(alert.get('file', ''))
 
 				alerts_html += f"""
 				<div class="alert alert-{severity} security-alert" data-severity="{severity}">
