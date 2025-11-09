@@ -608,17 +608,17 @@ git push origin feature/amazing-feature
 
 ## Next Feature
 
-- [ ] CI/CD integration (GitHub Actions workflow)
 - [ ] Kubernetes Scanners
 - [ ] Terraform Scanners
 - [ ] Cloud Config Scanners
 - [ ] Ansible Scanners
+- [ ] CI/CD integration (GitHub Actions workflow)
 - [ ] JSON export format
 - [ ] API mode (REST endpoint)
+- [ ] Web dashboard
 - [ ] Plugin system for extensibility
 - [ ] Database storage for historical analysis
 - [ ] Comparison reports (track changes over time)
-- [ ] Web dashboard
 - [ ] Custom rule definitions
 
 ## License

@@ -1,0 +1,9 @@
+Fix Heroku fake positive
+.env a la fin == fake positive
+.gitignore pas detecte si local
+pour stars fork files et open issues en version telephone garder le display en grid
+Dependencies not inside html
+affichage et responsiveness on Security Alerts
+
+
+plusieurs problemes, faut positif si fichier fini par .env (dev.env, prod.env) fix heroku fake positiv aussi il me semble tu peux voir dans les fichiers transcendence, si repo non clone, pas de detection de .gitignore alors quil peut etre present (git prive, le scanner peut etre utiliser pour mais quand meme un .git/gitignore) pour laffichage html de stars fork files et open issues, sur affichage telephone, garder le format avec le carre de 4 comme sur tablette je crois, juste adapte la taille, #dependencies pas presente sur le html et pour finir l'affichage de security alerte bug, regarde sur le html de repo-analyzer et de transcendence, dans les deux cas la responsivness est bug + bug de base aussi

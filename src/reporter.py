@@ -1,5 +1,10 @@
 """
 Report generation for analysis.
+
+FIXES:
+- Fixed fork icon (use different emoji)
+- Don't show GitHub URL for local repos in markdown
+- Show local path instead
 """
 
 import os
@@ -17,14 +22,8 @@ class ReportGenerator:
 			output_dir: Directory to save reports
 		"""
 		self.output_dir = output_dir
-
-		# Create directory if it doesn't exist
 		Path(output_dir).mkdir(exist_ok=True)
-
-		# Initialize HTML generator
 		self.html_generator = HTMLReportGenerator(output_dir)
-
-		# Initialize score calculator
 		self.score_calculator = SecurityScoreCalculator()
 
 	def generate_markdown(self, owner, repo, repo_info, languages,
@@ -39,13 +38,11 @@ class ReportGenerator:
 		filename = f"{repo}-{timestamp}.md"
 		filepath = os.path.join(self.output_dir, filename)
 
-		# Build markdown content
 		md_content = self._build_markdown_content(
 			owner, repo, repo_info, languages, contributors,
 			structure, dependencies, security_results, docker_results
 		)
 
-		# Write file
 		with open(filepath, 'w', encoding='utf-8') as f:
 			f.write(md_content)
 
@@ -67,8 +64,8 @@ class ReportGenerator:
 								contributors, structure, dependencies, security_results, docker_results):
 		"""Build markdown content."""
 
-		# Calculate unified score with GitHub data flag
 		has_github_data = bool(languages) or bool(contributors)
+		is_local = owner == "local"
 
 		score_data = self.score_calculator.calculate_unified_score(
 			security_results, docker_results, structure, has_github_data
@@ -77,13 +74,17 @@ class ReportGenerator:
 		# Header
 		md = f"# Analysis of {owner}/{repo}\n\n"
 		md += f"**Generated on:** {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n\n"
-		md += f"**URL:** https://github.com/{owner}/{repo}\n\n"
+
+		# FIXED: Show different URL for local vs GitHub repos
+		if is_local:
+			md += f"**Local path:** `{repo_info['clone_url']}`\n\n"
+		else:
+			md += f"**URL:** https://github.com/{owner}/{repo}\n\n"
 
 		# Unified Score
 		md += f"## 🎯 Security Score: {score_data['grade']} ({score_data['total_score']}/100)\n\n"
 		md += f"**{score_data['description']}**\n\n"
 
-		# Add local analysis note if applicable
 		if score_data.get('is_local_analysis'):
 			md += "> **Note:** This is a local analysis. GitHub metadata (stars, forks, contributors) is not available.\n\n"
 
@@ -118,14 +119,14 @@ class ReportGenerator:
 		md += "| Metric | Value |\n"
 		md += "|--------|-------|\n"
 
-		# Safe display for GitHub-only metrics
 		stars = repo_info.get('stars')
 		forks = repo_info.get('forks')
 		watchers = repo_info.get('watchers')
 		open_issues = repo_info.get('open_issues')
 
+		# FIXED: Use different fork icon that works better
 		md += f"| ⭐ Stars | {stars:,} |\n" if isinstance(stars, int) else "| ⭐ Stars | N/A |\n"
-		md += f"| 🍴 Forks | {forks:,} |\n" if isinstance(forks, int) else "| 🍴 Forks | N/A |\n"
+		md += f"| 🔱 Forks | {forks:,} |\n" if isinstance(forks, int) else "| 🔱 Forks | N/A |\n"
 		md += f"| 👀 Watchers | {watchers:,} |\n" if isinstance(watchers, int) else "| 👀 Watchers | N/A |\n"
 		md += f"| 🛠 Open issues | {open_issues} |\n" if isinstance(open_issues, int) else "| 🛠 Open issues | N/A |\n"
 
@@ -140,7 +141,7 @@ class ReportGenerator:
 			md += "## 💻 Languages\n\n"
 			md += "```\n"
 			for lang, percent in languages.items():
-				bar_length = int(percent / 2)  # 1 char = 2%
+				bar_length = int(percent / 2)
 				bar = "█" * bar_length
 				md += f"{lang:<15} {bar} {percent}%\n"
 			md += "```\n\n"
@@ -167,14 +168,12 @@ class ReportGenerator:
 		md += f"- **CI/CD:** {'✅ Configured' if structure.get('has_ci') else '❌ Not configured'}\n"
 		md += f"- **Docker:** {'✅ Present' if structure.get('has_docker') else '❌ Missing'}\n\n"
 
-		# Important files
 		if structure.get('important_files'):
 			md += "### Important files detected\n\n"
 			for f in sorted(structure['important_files']):
 				md += f"- ✅ `{f}`\n"
 			md += "\n"
 
-		# File types
 		if structure.get('file_types'):
 			md += "### File type distribution\n\n"
 			md += "| Extension | Count |\n"
@@ -205,7 +204,6 @@ class ReportGenerator:
 			if docker_results['total'] > 0:
 				md += f"### Docker Issues ({docker_results['total']})\n\n"
 
-				# Summary by severity
 				md += "| Severity | Count |\n"
 				md += "|----------|-------|\n"
 				md += f"| 🔴 Critical | {len(docker_results['critical'])} |\n"
@@ -214,7 +212,6 @@ class ReportGenerator:
 				md += f"| 🔵 Low | {len(docker_results['low'])} |\n"
 				md += f"| ℹ️ Info | {len(docker_results.get('info', []))} |\n\n"
 
-				# Details by severity
 				severity_names = {
 					"critical": "🔴 Critical",
 					"high": "🟠 High",
@@ -263,7 +260,6 @@ class ReportGenerator:
 		else:
 			md += f"⚠️ **{total_issues} issue(s) detected**\n\n"
 
-			# Summary by severity
 			md += "### Summary\n\n"
 			md += "| Severity | Count |\n"
 			md += "|----------|-------|\n"
@@ -272,7 +268,6 @@ class ReportGenerator:
 			md += f"| 🟡 Medium | {len(security_results['medium'])} |\n"
 			md += f"| 🔵 Low | {len(security_results['low'])} |\n\n"
 
-			# Details by severity
 			severity_names = {
 				"critical": "🔴 Critical",
 				"high": "🟠 High",
@@ -319,7 +314,6 @@ class ReportGenerator:
 		else:
 			md += "✅ No specific recommendations. The project looks well configured!\n\n"
 
-		# Footer
 		md += "---\n\n"
 		md += "*Report automatically generated by [GitHub Repository Analyzer](https://github.com/TuroTheReal/repo-analyzer)*\n"
 
@@ -440,23 +434,18 @@ class ReportGenerator:
 		"""Generate recommendations based on analysis."""
 		recommendations = []
 
-		# Tests
 		if not structure.get('has_tests'):
 			recommendations.append("**Add tests**: No test directory detected. Consider pytest (Python) or Jest (JS).")
 
-		# CI/CD
 		if not structure.get('has_ci'):
 			recommendations.append("**Configure CI/CD**: Automate your tests with GitHub Actions or GitLab CI.")
 
-		# Docker
 		if not structure.get('has_docker'):
 			recommendations.append("**Containerize the application**: Add a Dockerfile for easier deployment.")
 
-		# Docker issues
 		if docker_results.get('critical') or docker_results.get('high'):
 			recommendations.append("**🚨 URGENT: Fix critical/high Docker security issues** before continuing.")
 
-		# Security
 		if security_results['total'] > 0:
 			if security_results['critical'] or security_results['high']:
 				recommendations.append("**🚨 URGENT: Fix critical/high security issues** before continuing.")
@@ -464,11 +453,9 @@ class ReportGenerator:
 			if any(a['type'] == 'secret_exposed' for a in security_results['critical'] + security_results['high']):
 				recommendations.append("**Revoke exposed secrets**: Immediately change detected tokens/passwords.")
 
-		# Dependencies
 		if dependencies:
 			recommendations.append("**Update dependencies regularly**: Use `pip-audit` (Python) or `npm audit` (Node).")
 
-		# Documentation
 		if 'CONTRIBUTING.md' not in structure.get('important_files', []):
 			recommendations.append("**Add CONTRIBUTING.md**: Guide potential contributors.")
 
