@@ -2,11 +2,9 @@
 Interactive modern HTML report generation.
 
 FIXES:
-- Return filepath instead of undefined 'html' variable
-- Fixed mobile responsive (keep 2x2 grid for stats)
-- Fixed alert overflow and word-break
-- Added Dependencies section to HTML
-- Fixed security alerts layout on mobile
+- Fixed chart container overflow (proper CSS constraints)
+- Enhanced .env file security alert display
+- Improved responsive design for charts
 """
 
 import os
@@ -36,7 +34,6 @@ class HTMLReportGenerator:
 		with open(filepath, 'w', encoding='utf-8') as f:
 			f.write(html_content)
 
-		# FIX: Return filepath, not undefined 'html'
 		return filepath
 
 	def _generate_dependencies_section(self, dependencies):
@@ -345,7 +342,7 @@ class HTMLReportGenerator:
 		"""
 
 	def _generate_security_section(self, security_results):
-		"""Generate security section with alerts."""
+		"""Generate security section with alerts. ENHANCED: Better .env file display."""
 		total = security_results['total']
 
 		if total == 0:
@@ -399,6 +396,9 @@ class HTMLReportGenerator:
 				elif alert["type"] == "sensitive_file":
 					title = f"Sensitive file: {alert['file']}"
 					details = alert['message']
+					# ENHANCED: Add recommendation if present
+					if 'recommendation' in alert:
+						details += f"<br><div style='margin-top: 0.5rem; padding: 0.75rem; background: var(--bg-secondary); border-radius: 6px; border-left: 3px solid var(--accent-yellow);'><strong>💡 Best Practice:</strong> {alert['recommendation']}</div>"
 				elif alert["type"] == "outdated_dependency":
 					title = f"Outdated dependency: {alert['package']}"
 					details = f"Current version: {alert['current_version']} → Recommended: {alert['min_safe_version']}"
@@ -782,6 +782,7 @@ class HTMLReportGenerator:
 		color: var(--text-primary);
 	}}
 
+	/* FIXED: Chart container with proper overflow constraints */
 	.chart-container {{
 		position: relative;
 		width: 100%;
@@ -789,6 +790,7 @@ class HTMLReportGenerator:
 		height: auto;
 		margin: 2rem auto;
 		padding: 1rem;
+		overflow: hidden; /* Prevent overflow */
 	}}
 
 	.chart-wrapper {{
@@ -796,11 +798,13 @@ class HTMLReportGenerator:
 		width: 100%;
 		max-width: 600px;
 		margin: 0 auto;
+		overflow: hidden; /* Prevent overflow */
 	}}
 
 	.chart-wrapper canvas {{
 		width: 100% !important;
 		height: auto !important;
+		max-width: 100%; /* Constrain width */
 	}}
 
 	.security-score {{
@@ -1125,7 +1129,7 @@ class HTMLReportGenerator:
 		display: none !important;
 	}}
 
-	/* FIXED: Mobile responsive - keep 2x2 grid */
+	/* Mobile responsive - keep 2x2 grid */
 	@media (max-width: 768px) {{
 		.container {{
 			padding: 1.5rem;
@@ -1181,6 +1185,11 @@ class HTMLReportGenerator:
 
 		.chart-container {{
 			padding: 0.5rem;
+		}}
+
+		/* FIXED: Better chart responsiveness on mobile */
+		.chart-wrapper {{
+			max-width: 100%;
 		}}
 
 		.alert {{
