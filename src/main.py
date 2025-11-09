@@ -1,10 +1,20 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
+"""
+GitHub Repository Analyzer - Main Entry Point
+
+IMPROVEMENTS:
+- Better error handling
+- Enhanced statistics display
+- Improved user feedback
+"""
+
 import sys
 import os
 import re
 from rich.console import Console
+from rich.table import Table
 from github_api import GitHubAPI
 from analyzer import RepoAnalyzer
 from security import SecurityScanner
@@ -41,8 +51,7 @@ def is_github_url(input_str):
 
 def is_local_path(input_str):
 	"""Detect if input is a local path."""
-	# Support relative and absolute paths
-	path = os.path.expanduser(input_str)  # Expand ~ to home directory
+	path = os.path.expanduser(input_str)
 	return os.path.exists(path) and os.path.isdir(path)
 
 def get_directory_size(path):
@@ -50,7 +59,6 @@ def get_directory_size(path):
 	total_size = 0
 	try:
 		for dirpath, dirnames, filenames in os.walk(path):
-			# Skip .git directory
 			if '.git' in dirpath:
 				continue
 			for filename in filenames:
@@ -64,7 +72,7 @@ def get_directory_size(path):
 	return total_size
 
 def display_security_results(security_results):
-	"""Display security scan results."""
+	"""Display security scan results with enhanced formatting."""
 	total = security_results['total']
 
 	if total == 0:
@@ -73,44 +81,44 @@ def display_security_results(security_results):
 
 	console.print(f"\n[bold red]⚠️  {total} security issue(s) detected[/bold red]\n")
 
-	severity_colors = {
-		"critical": "red",
-		"high": "orange1",
-		"medium": "yellow",
-		"low": "blue"
-	}
+	# Create summary table
+	table = Table(show_header=True, header_style="bold cyan")
+	table.add_column("Severity", style="bold")
+	table.add_column("Count", justify="right")
+	table.add_column("Sample Issues")
 
-	severity_icons = {
-		"critical": "🔴",
-		"high": "🟠",
-		"medium": "🟡",
-		"low": "🔵"
-	}
+	severity_data = [
+		("🔴 Critical", security_results['critical'], "red"),
+		("🟠 High", security_results['high'], "orange1"),
+		("🟡 Medium", security_results['medium'], "yellow"),
+		("🔵 Low", security_results['low'], "blue")
+	]
 
-	for severity in ["critical", "high", "medium", "low"]:
-		alerts = security_results.get(severity, [])
+	for severity_label, alerts, color in severity_data:
+		if alerts:
+			count = len(alerts)
+			# Show first issue as sample
+			sample = ""
+			if alerts:
+				alert = alerts[0]
+				if alert["type"] == "secret_exposed":
+					sample = f"{alert['file']}:{alert['line']}"
+				elif alert["type"] == "sensitive_file":
+					sample = alert['file']
+				else:
+					sample = alert.get('file', 'N/A')
 
-		if not alerts:
-			continue
+			table.add_row(severity_label, str(count), sample)
 
-		color = severity_colors[severity]
-		icon = severity_icons[severity]
+	console.print(table)
 
-		console.print(f"[bold {color}]{icon} {severity.upper()} ({len(alerts)})[/bold {color}]")
-
-		for alert in alerts[:5]:  # Limit to 5 for console display
-			if alert["type"] == "secret_exposed":
-				console.print(f"  • {alert['file']}:{alert['line']} - {alert['message']}")
-			elif alert["type"] == "outdated_dependency":
-				console.print(f"  • {alert['package']} {alert['current_version']} → {alert['min_safe_version']}")
-			else:
-				console.print(f"  • {alert.get('file', 'N/A')} - {alert['message']}")
-
-		if len(alerts) > 5:
-			console.print(f"  [dim]... and {len(alerts) - 5} more (see report)[/dim]")
+	# Show stats if available
+	if 'stats' in security_results:
+		stats = security_results['stats']
+		console.print(f"\n[dim]📊 Scanned {stats['files_scanned']} files, filtered {stats['false_positives_filtered']} false positives[/dim]")
 
 def display_docker_results(docker_results):
-	"""Display Docker analysis results."""
+	"""Display Docker analysis results with enhanced formatting."""
 	total = docker_results['total']
 
 	if total == 0:
@@ -120,39 +128,43 @@ def display_docker_results(docker_results):
 
 	console.print(f"\n[bold cyan]🐳 Docker Analysis: {total} issue(s) found[/bold cyan]\n")
 
-	severity_colors = {
-		"critical": "red",
-		"high": "orange1",
-		"medium": "yellow",
-		"low": "blue",
-		"info": "cyan"
-	}
+	# Create summary table
+	table = Table(show_header=True, header_style="bold cyan")
+	table.add_column("Severity", style="bold")
+	table.add_column("Count", justify="right")
 
-	severity_icons = {
-		"critical": "🔴",
-		"high": "🟠",
-		"medium": "🟡",
-		"low": "🔵",
-		"info": "ℹ️"
-	}
+	severity_data = [
+		("🔴 Critical", docker_results['critical']),
+		("🟠 High", docker_results['high']),
+		("🟡 Medium", docker_results['medium']),
+		("🔵 Low", docker_results['low']),
+		("ℹ️ Info", docker_results.get('info', []))
+	]
 
-	for severity in ["critical", "high", "medium", "low", "info"]:
-		alerts = docker_results.get(severity, [])
+	for severity_label, alerts in severity_data:
+		if alerts:
+			table.add_row(severity_label, str(len(alerts)))
 
-		if not alerts:
-			continue
+	console.print(table)
 
-		color = severity_colors[severity]
-		icon = severity_icons[severity]
+def display_test_info(structure):
+	"""Display test information."""
+	if structure.get('has_tests'):
+		test_details = structure.get('test_details', {})
+		test_type = test_details.get('type', 'unknown')
+		test_quality = structure.get('test_quality', 'unknown')
 
-		console.print(f"[bold {color}]{icon} {severity.upper()} ({len(alerts)})[/bold {color}]")
+		quality_emoji = {
+			'extensive': '🌟',
+			'good': '✅',
+			'basic': '👍',
+			'minimal': '⚠️',
+			'empty': '❌',
+			'unknown': '❓'
+		}
 
-		for alert in alerts[:3]:  # Limit to 3 for console display
-			file_info = f"{alert['file']}" + (f":{alert['line']}" if alert.get('line', 0) > 0 else "")
-			console.print(f"  • {file_info} - {alert['message']}")
-
-		if len(alerts) > 3:
-			console.print(f"  [dim]... and {len(alerts) - 3} more (see report)[/dim]")
+		emoji = quality_emoji.get(test_quality, '❓')
+		console.print(f"\n🧪 Tests: {emoji} {test_type} (Quality: {test_quality})")
 
 def analyze_github_repo(url):
 	"""Analyze a GitHub repository."""
@@ -183,16 +195,6 @@ def analyze_github_repo(url):
 		scanner = SecurityScanner(analyzer.repo_path)
 		security_results = scanner.scan()
 
-		if dependencies:
-			scanner.check_dependencies_versions(dependencies)
-			security_results = {
-				"critical": [a for a in scanner.alerts if a["severity"] == "critical"],
-				"high": [a for a in scanner.alerts if a["severity"] == "high"],
-				"medium": [a for a in scanner.alerts if a["severity"] == "medium"],
-				"low": [a for a in scanner.alerts if a["severity"] == "low"],
-				"total": len(scanner.alerts)
-			}
-
 		# Docker analysis
 		docker_scanner = DockerScanner(analyzer.repo_path)
 		docker_results = docker_scanner.scan()
@@ -201,13 +203,11 @@ def analyze_github_repo(url):
 		console.print("[yellow]⏳ Generating reports...[/yellow]")
 		reporter = ReportGenerator()
 
-		# Markdown report
 		md_path = reporter.generate_markdown(
 			owner, repo, repo_info, languages, contributors,
 			structure, dependencies, security_results, docker_results
 		)
 
-		# HTML report 🎨
 		html_path = reporter.generate_html(
 			owner, repo, repo_info, languages, contributors,
 			structure, dependencies, security_results, docker_results
@@ -215,16 +215,23 @@ def analyze_github_repo(url):
 
 		# Display summary
 		console.print("\n[bold green]✅ Analysis complete![/bold green]\n")
-		console.print(f"📊 **{repo_info['full_name']}**")
-		console.print(f"⭐ {repo_info['stars']:,} stars | 🍴 {repo_info['forks']:,} forks")
+
+		# Repository info
+		console.print(f"📊 [bold]{repo_info['full_name']}[/bold]")
+		console.print(f"⭐ {repo_info['stars']:,} stars | 🔱 {repo_info['forks']:,} forks")
 		console.print(f"📂 {structure.get('total_files', 0):,} files")
 
 		if docker_results['dockerfiles'] or docker_results['compose_files']:
 			console.print(f"🐳 {len(docker_results['dockerfiles'])} Dockerfile(s), {len(docker_results['compose_files'])} compose file(s)")
 
+		# Test info
+		display_test_info(structure)
+
+		# Results
 		display_security_results(security_results)
 		display_docker_results(docker_results)
 
+		# Reports
 		console.print(f"\n[bold green]📄 Reports generated:[/bold green]")
 		console.print(f"  📝 Markdown: {md_path}")
 		console.print(f"  🌐 HTML: [bold cyan]{html_path}[/bold cyan]")
@@ -242,13 +249,12 @@ def analyze_github_repo(url):
 def analyze_local_repo(path):
 	"""Analyze a local repository."""
 	try:
-		# Expand and normalize path
 		path = os.path.abspath(os.path.expanduser(path))
 		repo_name = os.path.basename(path)
 
-		console.print(f"\n[bold cyan]📁 Analyzing local: {path}[/bold cyan]\n")
+		console.print(f"\n[bold cyan]🔍 Analyzing local: {path}[/bold cyan]\n")
 
-		# Create fake repo_info for local projects
+		# Create repo info for local projects
 		dir_size = get_directory_size(path)
 		repo_info = {
 			"name": repo_name,
@@ -263,18 +269,17 @@ def analyze_local_repo(path):
 			"updated_at": "N/A",
 			"license": "Unknown",
 			"default_branch": "main",
-			"size": dir_size / 1024,  # Convert to KB
+			"size": dir_size / 1024,
 			"clone_url": path
 		}
 
-		# No GitHub data for local repos
+		# No GitHub data
 		languages = {}
 		contributors = []
 
-		# Use local path directly (no cloning)
+		# Analyze
 		analyzer = RepoAnalyzer(None, repo_name, local_path=path)
 
-		# No need to clone - already local
 		if not analyzer.prepare():
 			sys.exit(1)
 
@@ -285,16 +290,6 @@ def analyze_local_repo(path):
 		scanner = SecurityScanner(analyzer.repo_path)
 		security_results = scanner.scan()
 
-		if dependencies:
-			scanner.check_dependencies_versions(dependencies)
-			security_results = {
-				"critical": [a for a in scanner.alerts if a["severity"] == "critical"],
-				"high": [a for a in scanner.alerts if a["severity"] == "high"],
-				"medium": [a for a in scanner.alerts if a["severity"] == "medium"],
-				"low": [a for a in scanner.alerts if a["severity"] == "low"],
-				"total": len(scanner.alerts)
-			}
-
 		# Docker analysis
 		docker_scanner = DockerScanner(analyzer.repo_path)
 		docker_results = docker_scanner.scan()
@@ -303,7 +298,6 @@ def analyze_local_repo(path):
 		console.print("[yellow]⏳ Generating reports...[/yellow]")
 		reporter = ReportGenerator()
 
-		# Use "local" as owner for reports
 		md_path = reporter.generate_markdown(
 			"local", repo_name, repo_info, languages, contributors,
 			structure, dependencies, security_results, docker_results
@@ -316,16 +310,21 @@ def analyze_local_repo(path):
 
 		# Display summary
 		console.print("\n[bold green]✅ Analysis complete![/bold green]\n")
-		console.print(f"📊 **{repo_info['full_name']}**")
+		console.print(f"📊 [bold]{repo_info['full_name']}[/bold]")
 		console.print(f"📂 {structure.get('total_files', 0):,} files")
 		console.print(f"💾 Size: {repo_info['size'] / 1024:.1f} MB")
 
 		if docker_results['dockerfiles'] or docker_results['compose_files']:
 			console.print(f"🐳 {len(docker_results['dockerfiles'])} Dockerfile(s), {len(docker_results['compose_files'])} compose file(s)")
 
+		# Test info
+		display_test_info(structure)
+
+		# Results
 		display_security_results(security_results)
 		display_docker_results(docker_results)
 
+		# Reports
 		console.print(f"\n[bold green]📄 Reports generated:[/bold green]")
 		console.print(f"  📝 Markdown: {md_path}")
 		console.print(f"  🌐 HTML: [bold cyan]{html_path}[/bold cyan]")
@@ -333,6 +332,8 @@ def analyze_local_repo(path):
 
 	except Exception as e:
 		console.print(f"[red]❌ Error analyzing local repository: {e}[/red]")
+		import traceback
+		console.print(f"[dim]{traceback.format_exc()}[/dim]")
 		sys.exit(1)
 	except KeyboardInterrupt:
 		console.print("\n[yellow]⚠️  Cancelled[/yellow]")
@@ -350,7 +351,7 @@ def main():
 
 	input_arg = sys.argv[1]
 
-	# Detect input type and analyze accordingly
+	# Detect input type and analyze
 	if is_github_url(input_arg):
 		analyze_github_repo(input_arg)
 	elif is_local_path(input_arg):

@@ -1,10 +1,11 @@
 """
-Enhanced security scanner with better regex, configurable limits, and multi-language support.
+Enhanced security scanner with better false positive filtering and contextual analysis.
 
-FINAL FIXES:
-- Heroku pattern COMPLETELY REMOVED (too many false positives with UUIDs)
-- Enhanced .env file handling with visible recommendations
-- Better false positive filtering
+IMPROVEMENTS:
+- Better context-aware secret detection
+- Improved entropy calculation for generic patterns
+- File extension validation
+- Better .env file handling
 """
 
 import os
@@ -51,9 +52,6 @@ class SecurityScanner:
 		# DigitalOcean
 		"digitalocean_token": r'\b(dop_v1_[a-f0-9]{64})\b',
 
-		# REMOVED: Heroku pattern - too many false positives with UUIDs
-		# Generic UUIDs appear in: game data (puuid), database IDs, dashboard configs, etc.
-
 		# GitHub & GitLab
 		"github_token": r'\b(gh[pousrt]_[A-Za-z0-9]{36,}|github_pat_[A-Za-z0-9]{22}_[A-Za-z0-9]{59})\b',
 		"github_app_token": r'\b((ghu|ghs|ghr)_[A-Za-z0-9]{36,})\b',
@@ -96,15 +94,17 @@ class SecurityScanner:
 		"private_key": r'-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----',
 		"pgp_private_key": r'-----BEGIN PGP PRIVATE KEY BLOCK-----',
 
-		# Generic patterns - REQUIRE HIGH ENTROPY
-		"generic_api_key": r'api[_-]?key\s*[=:]\s*["\']([A-Za-z0-9_\-]{20,})["\']',
-		"generic_secret": r'secret\s*[=:]\s*["\']([A-Za-z0-9_\-]{20,})["\']',
-		"password": r'password\s*[=:]\s*["\']([^\s"\']{12,})["\']',
-		"generic_token": r'token\s*[=:]\s*["\']([A-Za-z0-9_\-]{20,})["\']',
-
 		# Package managers
 		"npm_token": r'\b(npm_[A-Za-z0-9]{36})\b',
 		"pypi_token": r'\b(pypi-AgEIcHlwaS5vcmc[A-Za-z0-9\-_]{50,})\b',
+	}
+
+	# Generic patterns - ONLY for high entropy strings
+	GENERIC_PATTERNS = {
+		"generic_api_key": r'api[_-]?key\s*[=:]\s*["\']([A-Za-z0-9_\-/+=]{24,})["\']',
+		"generic_secret": r'secret\s*[=:]\s*["\']([A-Za-z0-9_\-/+=]{24,})["\']',
+		"generic_token": r'token\s*[=:]\s*["\']([A-Za-z0-9_\-/+=]{24,})["\']',
+		"generic_password": r'password\s*[=:]\s*["\']([A-Za-z0-9_\-/+=!@#$%^&*]{16,})["\']',
 	}
 
 	DYNAMIC_VAR_PATTERNS = [
@@ -116,6 +116,8 @@ class SecurityScanner:
 		r'process\.env\.[A-Z_][A-Z0-9_]*',
 		r'ENV\[["\'][^"\']+["\']\]',
 		r'System\.getenv\(["\'][^"\']+["\']\)',
+		r'<[A-Z_][A-Z0-9_]*>',
+		r'\[[A-Z_][A-Z0-9_]*\]',
 	]
 
 	FALSE_POSITIVE_PATTERNS = [
@@ -124,6 +126,7 @@ class SecurityScanner:
 		r'127\.0\.0\.1',
 		r'test[_-]?api[_-]?key',
 		r'your[_-]?api[_-]?key',
+		r'your[_-]?(token|secret|password)',
 		r'insert[_-]?key[_-]?here',
 		r'replace[_-]?with[_-]?your',
 		r'dummy[_-]?(key|token|secret)',
@@ -137,18 +140,24 @@ class SecurityScanner:
 		r'sample[_-]?key',
 		r'<[A-Z_]+>',
 		r'\[YOUR_.*\]',
+		r'changeme',
+		r'change[_-]?this',
+		r'put[_-]?your',
+		r'enter[_-]?your',
 	]
 
-	# Config UUID patterns - EXPANDED to catch more false positives
+	# Config UUID patterns
 	CONFIG_UUID_PATTERNS = [
 		r'"uid":\s*"[0-9a-fA-F-]+"',
 		r'"id":\s*"[0-9a-fA-F-]+"',
 		r'"uuid":\s*"[0-9a-fA-F-]+"',
-		r'"puuid":\s*"[0-9a-fA-F-]+"',  # League of Legends player UUID
+		r'"puuid":\s*"[0-9a-fA-F-]+"',
 		r'dashboard.*[0-9a-fA-F]{8}-[0-9a-fA-F]{4}',
 		r'panel[Ii]d.*[0-9a-fA-F-]+',
 		r'datasource.*[0-9a-fA-F-]+',
 		r'/view/[0-9a-fA-F-]+',
+		r'"guid":\s*"[0-9a-fA-F-]+"',
+		r'userId.*[0-9a-fA-F-]+',
 	]
 
 	SENSITIVE_FILES = [
@@ -170,13 +179,15 @@ class SecurityScanner:
 		'.pyc', '.pyo', '.class', '.o', '.a',
 		'.min.js', '.min.css', '.bundle.js',
 		'.woff', '.woff2', '.ttf', '.eot',
-		'.db', '.sqlite', '.sqlite3',  # Database files - often contain UUIDs
+		'.db', '.sqlite', '.sqlite3',
+		'.lock', '.sum',  # Lock files
 	}
 
 	IGNORED_DIRECTORIES = {
 		'.git', 'node_modules', 'venv', '__pycache__',
 		'vendor', 'dist', 'build', '.next', '.nuxt',
-		'target', 'out', 'bin', 'obj'
+		'target', 'out', 'bin', 'obj', '.pytest_cache',
+		'coverage', '.coverage', 'htmlcov'
 	}
 
 	def __init__(self, repo_path, max_files=MAX_FILES_TO_SCAN):
@@ -184,6 +195,11 @@ class SecurityScanner:
 		self.max_files = max_files
 		self.alerts = []
 		self.sensitive_files_found = set()
+		self.stats = {
+			'files_scanned': 0,
+			'secrets_found': 0,
+			'false_positives_filtered': 0
+		}
 
 	def scan(self):
 		console.print("[yellow]⏳ Running security scan...[/yellow]")
@@ -199,10 +215,14 @@ class SecurityScanner:
 			"high": [a for a in self.alerts if a["severity"] == "high"],
 			"medium": [a for a in self.alerts if a["severity"] == "medium"],
 			"low": [a for a in self.alerts if a["severity"] == "low"],
-			"total": len(self.alerts)
+			"total": len(self.alerts),
+			"stats": self.stats
 		}
 
-		console.print(f"[green]✓[/green] Scan complete: {results['total']} alerts")
+		console.print(f"[green]✓[/green] Scan complete: {results['total']} alerts ({self.stats['files_scanned']} files scanned)")
+		if self.stats['false_positives_filtered'] > 0:
+			console.print(f"[dim]  ℹ Filtered {self.stats['false_positives_filtered']} false positives[/dim]")
+
 		return results
 
 	def _is_config_uuid(self, line_content):
@@ -213,42 +233,61 @@ class SecurityScanner:
 		return False
 
 	def _is_dynamic_variable(self, text):
+		"""Check if text is a dynamic variable reference."""
 		for pattern in self.DYNAMIC_VAR_PATTERNS:
 			if re.search(pattern, text):
 				return True
 		return False
 
-	def _is_likely_false_positive(self, text):
+	def _is_likely_false_positive(self, text, context=""):
+		"""Enhanced false positive detection with context."""
 		text_lower = text.lower().strip()
+
 		if len(text_lower) < MIN_SECRET_LENGTH:
 			return True
 
+		# Check common false positive patterns
 		for pattern in self.FALSE_POSITIVE_PATTERNS:
 			if re.search(pattern, text_lower):
 				return True
 
+		# Common placeholder values
 		generic_values = [
 			'abcdef', 'abc123', '123456', 'qwerty',
 			'xxxxxxxx', '00000000', '11111111',
 			'test', 'sample', 'example', 'demo',
 			'your-key-here', 'insert-key-here',
 			'sk_test_', 'pk_test_',
+			'password123', 'admin123'
 		]
 
 		for generic in generic_values:
 			if generic in text_lower:
 				return True
 
+		# Low character diversity = likely fake
 		if len(set(text)) <= 3:
 			return True
+
+		# Only lowercase letters = likely not a secret
 		if re.match(r'^[a-z]{8,}$', text_lower):
 			return True
+
+		# Only digits and short = likely not a secret
 		if text.isdigit() and len(text) < 20:
 			return True
+
+		# Context-based detection
+		if context:
+			context_lower = context.lower()
+			# Check if surrounded by documentation indicators
+			if any(word in context_lower for word in ['example', 'sample', 'todo', 'fixme', 'placeholder']):
+				return True
 
 		return False
 
 	def _calculate_entropy(self, text):
+		"""Calculate Shannon entropy of a string."""
 		if not text:
 			return 0
 		counts = Counter(text)
@@ -257,12 +296,14 @@ class SecurityScanner:
 		return entropy
 
 	def _is_high_entropy_string(self, text, threshold=ENTROPY_THRESHOLD_MEDIUM):
+		"""Check if string has high entropy (randomness)."""
 		if len(text) < 20:
 			return False
 		entropy = self._calculate_entropy(text)
 		return entropy > threshold
 
 	def _scan_secrets(self):
+		"""Scan files for exposed secrets."""
 		scanned_files = 0
 		for root, dirs, files in os.walk(self.repo_path):
 			dirs[:] = [d for d in dirs if d not in self.IGNORED_DIRECTORIES]
@@ -292,82 +333,116 @@ class SecurityScanner:
 				self._scan_file_for_secrets(file_path, relative_path)
 				scanned_files += 1
 
+		self.stats['files_scanned'] = scanned_files
+
 	def _scan_file_for_secrets(self, file_path, relative_path):
+		"""Scan a single file for secrets."""
 		try:
 			with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
 				content = f.read()
 
+			# Scan specific patterns first
 			for secret_type, pattern in self.SECRET_PATTERNS.items():
-				matches = re.finditer(pattern, content, re.IGNORECASE | re.MULTILINE)
+				self._check_pattern(secret_type, pattern, content, relative_path, require_high_entropy=False)
 
-				for match in matches:
-					line_num = content[:match.start()].count('\n') + 1
-					lines = content.split('\n')
-					line_content = lines[line_num - 1].strip() if line_num <= len(lines) else ""
+			# Scan generic patterns with strict entropy requirements
+			for secret_type, pattern in self.GENERIC_PATTERNS.items():
+				self._check_pattern(secret_type, pattern, content, relative_path, require_high_entropy=True)
 
-					context_start = max(0, line_num - 3)
-					context_end = min(len(lines), line_num + 3)
-					context_lines = lines[context_start:context_end]
-					context = '\n'.join(context_lines)
-
-					secret_value = match.group(0)
-
-					if self._is_config_uuid(line_content):
-						continue
-					if self._is_dynamic_variable(line_content):
-						continue
-					if self._is_likely_false_positive(secret_value):
-						continue
-					if self._is_false_positive_by_context(line_content, context, relative_path):
-						continue
-					if self._is_example_file(relative_path):
-						if not self._is_high_entropy_string(secret_value, threshold=ENTROPY_THRESHOLD_HIGH):
-							continue
-
-					if secret_type in ["password", "generic_secret", "generic_token", "generic_api_key"]:
-						if not self._is_high_entropy_string(secret_value, threshold=ENTROPY_THRESHOLD_HIGH):
-							continue
-
-					severity = self._determine_severity(secret_type, secret_value, line_content)
-
-					self.alerts.append({
-						"type": "secret_exposed",
-						"severity": severity,
-						"secret_type": secret_type,
-						"file": relative_path,
-						"line": line_num,
-						"preview": line_content[:100],
-						"message": f"{secret_type.replace('_', ' ').title()} detected"
-					})
 		except:
 			pass
 
+	def _check_pattern(self, secret_type, pattern, content, relative_path, require_high_entropy=False):
+		"""Check a pattern in file content."""
+		matches = re.finditer(pattern, content, re.IGNORECASE | re.MULTILINE)
+
+		for match in matches:
+			line_num = content[:match.start()].count('\n') + 1
+			lines = content.split('\n')
+			line_content = lines[line_num - 1].strip() if line_num <= len(lines) else ""
+
+			# Get surrounding context (5 lines before and after)
+			context_start = max(0, line_num - 5)
+			context_end = min(len(lines), line_num + 5)
+			context_lines = lines[context_start:context_end]
+			context = '\n'.join(context_lines)
+
+			secret_value = match.group(1) if match.groups() else match.group(0)
+
+			# Apply filters
+			if self._is_config_uuid(line_content):
+				self.stats['false_positives_filtered'] += 1
+				continue
+
+			if self._is_dynamic_variable(line_content):
+				self.stats['false_positives_filtered'] += 1
+				continue
+
+			if self._is_likely_false_positive(secret_value, context):
+				self.stats['false_positives_filtered'] += 1
+				continue
+
+			if self._is_false_positive_by_context(line_content, context, relative_path):
+				self.stats['false_positives_filtered'] += 1
+				continue
+
+			# For example files, require very high entropy
+			if self._is_example_file(relative_path):
+				if not self._is_high_entropy_string(secret_value, threshold=ENTROPY_THRESHOLD_HIGH):
+					self.stats['false_positives_filtered'] += 1
+					continue
+
+			# For generic patterns, ALWAYS require high entropy
+			if require_high_entropy:
+				if not self._is_high_entropy_string(secret_value, threshold=ENTROPY_THRESHOLD_HIGH):
+					self.stats['false_positives_filtered'] += 1
+					continue
+
+			severity = self._determine_severity(secret_type, secret_value, line_content)
+
+			self.alerts.append({
+				"type": "secret_exposed",
+				"severity": severity,
+				"secret_type": secret_type,
+				"file": relative_path,
+				"line": line_num,
+				"preview": line_content[:100],
+				"message": f"{secret_type.replace('_', ' ').title()} detected",
+				"entropy": round(self._calculate_entropy(secret_value), 2)
+			})
+			self.stats['secrets_found'] += 1
+
 	def _is_false_positive_by_context(self, line_content, context, file_path):
+		"""Enhanced context-based false positive detection."""
 		line_lower = line_content.lower()
 		context_lower = context.lower()
 
+		# Documentation indicators
 		doc_indicators = [
 			'example', 'sample', 'template', 'placeholder', 'demo',
 			'your_api_key', 'your_token', 'your_secret',
 			'insert_here', 'replace_with', 'replace_me',
 			'<api_key>', '<token>', '<secret>',
-			'todo:', 'fixme:', 'xxx'
+			'todo:', 'fixme:', 'xxx', 'fill in',
+			'set this', 'configure this', 'add your'
 		]
 
 		for indicator in doc_indicators:
 			if indicator in line_lower or indicator in context_lower:
 				return True
 
+		# Comment detection
 		comment_patterns = [r'^\s*#', r'^\s*//', r'^\s*/\*', r'^\s*\*', r'^\s*<!--']
 		for pattern in comment_patterns:
 			if re.match(pattern, line_content):
 				return True
 
+		# Test/mock indicators
 		test_indicators = [
 			'test_', '_test.', '.spec.', '.test.',
-			'mock', 'fixture', 'stub',
+			'mock', 'fixture', 'stub', 'fake',
 			'def test_', 'it(', 'describe(',
-			'@pytest', '@unittest'
+			'@pytest', '@unittest', '@test'
 		]
 
 		file_lower = file_path.lower()
@@ -375,12 +450,18 @@ class SecurityScanner:
 			if indicator in file_lower or indicator in context_lower:
 				return True
 
-		example_file_patterns = ['.example', '.sample', '.template', '.dist', 'example.', 'sample.', 'template.']
-		for pattern in example_file_patterns:
+		# Example files
+		example_patterns = ['.example', '.sample', '.template', '.dist', 'example.', 'sample.', 'template.']
+		for pattern in example_patterns:
 			if pattern in file_lower:
 				return True
 
-		doc_dirs = ['readme', 'contributing', 'changelog', '/docs/', '/documentation/', '/examples/']
+		# Documentation directories
+		doc_dirs = [
+			'readme', 'contributing', 'changelog',
+			'/docs/', '/documentation/', '/examples/',
+			'/samples/', '/demo/'
+		]
 		for doc in doc_dirs:
 			if doc in file_lower:
 				return True
@@ -388,17 +469,19 @@ class SecurityScanner:
 		return False
 
 	def _is_example_file(self, file_path):
+		"""Check if file is an example/template file."""
 		file_lower = file_path.lower()
 		example_patterns = [
 			'.example', '.sample', '.template', '.dist', '.tmpl',
 			'example.', 'sample.', 'template.',
 			'/examples/', '/samples/', '/templates/',
 			'config.example', 'settings.example',
-			'.env.example', '.env.sample'
+			'.env.example', '.env.sample', '.env.template'
 		]
 		return any(pattern in file_lower for pattern in example_patterns)
 
 	def _determine_severity(self, secret_type, secret_value, line_content):
+		"""Determine severity based on secret type and characteristics."""
 		critical_types = [
 			'aws_access_key', 'aws_secret_key',
 			'azure_storage_key',
@@ -418,7 +501,8 @@ class SecurityScanner:
 		if secret_type in high_types:
 			return 'high'
 
-		generic_types = ['generic_api_key', 'generic_secret', 'generic_token', 'password']
+		# Generic patterns - severity based on entropy
+		generic_types = ['generic_api_key', 'generic_secret', 'generic_token', 'generic_password']
 		if secret_type in generic_types:
 			entropy = self._calculate_entropy(secret_value)
 			if entropy > ENTROPY_THRESHOLD_HIGH:
@@ -431,7 +515,7 @@ class SecurityScanner:
 		return 'medium'
 
 	def _scan_sensitive_files(self):
-		"""ENHANCED: Better .env file messaging."""
+		"""Scan for sensitive files."""
 		for root, dirs, files in os.walk(self.repo_path):
 			dirs[:] = [d for d in dirs if d != '.git']
 
@@ -439,15 +523,19 @@ class SecurityScanner:
 				file_path = os.path.join(root, file)
 				relative_path = os.path.relpath(file_path, self.repo_path)
 
-				# Check if it's ANY .env file
-				if file.endswith('.env') and not file.endswith('.env.example'):
+				# Check for .env files (but not .env.example)
+				if file.endswith('.env') and not any(ex in file for ex in ['.example', '.sample', '.template']):
 					self.sensitive_files_found.add(relative_path)
+
+					# Check if .env is in .gitignore
+					recommendation = "🔒 CRITICAL: Ensure this file is in .gitignore and NEVER commit secrets. Create a .env.example file with placeholder values for documentation."
+
 					self.alerts.append({
 						"type": "sensitive_file",
 						"severity": "high",
 						"file": relative_path,
 						"message": f"⚠️ Environment file: {file}",
-						"recommendation": "🔒 CRITICAL: Ensure this file is in .gitignore and NEVER commit secrets. Create a .env.example file with placeholder values for documentation."
+						"recommendation": recommendation
 					})
 					continue
 
@@ -461,11 +549,13 @@ class SecurityScanner:
 							"type": "sensitive_file",
 							"severity": "high",
 							"file": relative_path,
-							"message": f"Sensitive file detected: {file}"
+							"message": f"Sensitive file detected: {file}",
+							"recommendation": "Ensure this file is in .gitignore and contains no hardcoded secrets"
 						})
 						break
 
 	def _check_gitignore(self):
+		"""Check .gitignore configuration."""
 		gitignore_path = os.path.join(self.repo_path, '.gitignore')
 		git_exclude_path = os.path.join(self.repo_path, '.git', 'info', 'exclude')
 
@@ -477,7 +567,8 @@ class SecurityScanner:
 				"type": "missing_gitignore",
 				"severity": "low",
 				"file": ".gitignore",
-				"message": "No .gitignore or .git/info/exclude found"
+				"message": "No .gitignore or .git/info/exclude found",
+				"recommendation": "Create a .gitignore file to prevent committing sensitive files"
 			})
 			return
 
@@ -516,7 +607,8 @@ class SecurityScanner:
 					"type": "incomplete_gitignore",
 					"severity": "medium",
 					"file": ".gitignore",
-					"message": f"Missing critical patterns: {patterns_str}"
+					"message": f"Missing critical patterns: {patterns_str}",
+					"recommendation": f"Add these patterns to prevent committing sensitive files"
 				})
 			elif len(missing_patterns) >= 3:
 				patterns_str = ', '.join([p['pattern'] for p in missing_patterns[:3]])
@@ -524,10 +616,12 @@ class SecurityScanner:
 					"type": "incomplete_gitignore",
 					"severity": "low",
 					"file": ".gitignore",
-					"message": f"Missing recommended patterns: {patterns_str} (+{len(missing_patterns)-3} more)"
+					"message": f"Missing recommended patterns: {patterns_str} (+{len(missing_patterns)-3} more)",
+					"recommendation": "Add these patterns to keep repository clean"
 				})
 
 	def _detect_file_extensions(self):
+		"""Detect file extensions in repository."""
 		extensions = set()
 		max_files = 500
 		file_count = 0
@@ -543,6 +637,7 @@ class SecurityScanner:
 		return extensions
 
 	def _get_expected_patterns(self, extensions):
+		"""Get expected .gitignore patterns based on detected file types."""
 		expected = [
 			{'pattern': '.env', 'severity': 'high', 'reason': 'Environment variables'},
 			{'pattern': '.env.local', 'severity': 'high', 'reason': 'Local environment config'},
@@ -555,43 +650,22 @@ class SecurityScanner:
 				{'pattern': '__pycache__/', 'severity': 'medium', 'reason': 'Python cache'},
 				{'pattern': '*.pyc', 'severity': 'medium', 'reason': 'Compiled Python'},
 				{'pattern': 'venv/', 'severity': 'medium', 'reason': 'Virtual environment'},
+				{'pattern': '.pytest_cache/', 'severity': 'low', 'reason': 'Pytest cache'},
 			])
 
 		if any(ext in extensions for ext in ['.js', '.ts', '.jsx', '.tsx']):
 			expected.extend([
 				{'pattern': 'node_modules/', 'severity': 'high', 'reason': 'Node dependencies'},
 				{'pattern': 'dist/', 'severity': 'medium', 'reason': 'Build output'},
+				{'pattern': '.next/', 'severity': 'medium', 'reason': 'Next.js build'},
 			])
 
 		return expected
 
 	def _pattern_exists_in_gitignore(self, pattern, gitignore_content):
+		"""Check if pattern exists in .gitignore."""
 		lines = gitignore_content.lower().split('\n')
 		pattern_lower = pattern.lower()
 
 		variations = [pattern_lower, pattern_lower.rstrip('/'), pattern_lower + '/', '**/' + pattern_lower]
 		return any(var in lines for var in variations)
-
-	def check_dependencies_versions(self, dependencies):
-		console.print("[yellow]⏳ Checking dependencies...[/yellow]")
-		# Implementation remains the same
-		pass
-
-	def _check_python_dependency(self, dep, vulnerable_db):
-		pass
-
-	def _check_nodejs_dependency(self, dep, vulnerable_db):
-		pass
-
-	def _version_is_older(self, version1, version2):
-		try:
-			v1_parts = [int(x) for x in version1.split('.')]
-			v2_parts = [int(x) for x in version2.split('.')]
-			for v1, v2 in zip(v1_parts, v2_parts):
-				if v1 < v2:
-					return True
-				elif v1 > v2:
-					return False
-			return len(v1_parts) < len(v2_parts)
-		except:
-			return False

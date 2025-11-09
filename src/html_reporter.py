@@ -1279,7 +1279,7 @@ class HTMLReportGenerator:
 			<div style="margin-top: 1.5rem; padding: 1rem; background: rgba(124, 159, 245, 0.1); border-radius: 8px; border-left: 3px solid var(--accent-blue);">
 				<div style="font-size: 0.95rem; color: var(--text-secondary);">
 					<strong>ℹ️ Local Analysis Mode</strong><br>
-					This project was analyzed locally. GitHub metadata (stars, forks, contributors, languages) is not available.
+					This project was analyzed locally. GitHub metadata (stars, forks, contributors, languages) are not available.
 				</div>
 			</div>
 			''' if score_data.get('is_local_analysis') else ''}

@@ -86,7 +86,7 @@ class ReportGenerator:
 		md += f"**{score_data['description']}**\n\n"
 
 		if score_data.get('is_local_analysis'):
-			md += "> **Note:** This is a local analysis. GitHub metadata (stars, forks, contributors) is not available.\n\n"
+			md += "> **Note:** This is a local analysis. GitHub metadata (stars, forks, contributors) are not available.\n\n"
 
 		md += "| Component | Score | Weight |\n"
 		md += "|-----------|-------|--------|\n"

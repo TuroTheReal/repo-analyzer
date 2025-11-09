@@ -1,40 +1,36 @@
 """
-Unified security score calculator with unbiased Docker scoring.
+Unified security score calculator with enhanced weighting.
 
 IMPROVEMENTS:
-- Fixed Docker scoring bias (projects without Docker no longer get free points)
-- Named constants instead of magic numbers
-- Full English comments
-- Configurable weights
+- Better test quality assessment
+- Enhanced Docker scoring
+- More nuanced best practices scoring
 """
 
 # === SCORING CONSTANTS ===
-# Component weights (must sum to 1.0)
 WEIGHT_SECURITY = 0.5  # 50%
 WEIGHT_DOCKER = 0.3  # 30%
 WEIGHT_BEST_PRACTICES = 0.2  # 20%
 
-# Severity penalties (deducted from base score of 100)
+# Severity penalties
 PENALTY_CRITICAL = 15
 PENALTY_HIGH = 8
 PENALTY_MEDIUM = 4
 PENALTY_LOW = 1
 PENALTY_INFO = 0.5
 
-# Best practices points
-POINTS_TESTS = 30
+# Best practices points (total = 100)
+POINTS_TESTS_BASE = 20  # Base points for having tests
+POINTS_TESTS_QUALITY = 10  # Additional points for quality
 POINTS_CI_CD = 25
 POINTS_GITIGNORE = 20
 POINTS_NO_SECRETS = 25
 
-# Docker neutral score (when no Docker files present)
-DOCKER_NEUTRAL_SCORE = 70  # More fair: slightly positive but not perfect
+# Docker neutral score
+DOCKER_NEUTRAL_SCORE = 70
 
 class SecurityScoreCalculator:
-	"""
-	Calculates unified security score from all scan results.
-	Works with both GitHub repos and local projects.
-	"""
+	"""Calculates unified security score from all scan results."""
 
 	def calculate_unified_score(self, security_results, docker_results, structure, has_github_data=True):
 		"""
@@ -88,7 +84,8 @@ class SecurityScoreCalculator:
 				'critical': len(docker_results['critical']),
 				'high': len(docker_results['high']),
 				'medium': len(docker_results['medium']),
-				'low': len(docker_results['low'])
+				'low': len(docker_results['low']),
+				'info': len(docker_results.get('info', []))
 			},
 			'best_practices': {
 				'score': best_practices_score,
@@ -96,7 +93,7 @@ class SecurityScoreCalculator:
 			}
 		}
 
-		# Description with note if local analysis
+		# Description
 		description = self._get_score_description(total_score)
 		if not has_github_data:
 			description += " (Local analysis - limited metadata)"
@@ -115,40 +112,34 @@ class SecurityScoreCalculator:
 	def _calculate_security_score(self, security_results):
 		"""
 		Calculate security score out of 100.
-		Base score 100, deduct points for each issue.
 
-		Returns:
-			int: Score 0-100
+		Enhanced: Weight critical issues more heavily.
 		"""
 		score = 100
 
-		# Deduct penalties by severity
+		# Apply penalties
 		score -= len(security_results['critical']) * PENALTY_CRITICAL
 		score -= len(security_results['high']) * PENALTY_HIGH
 		score -= len(security_results['medium']) * PENALTY_MEDIUM
 		score -= len(security_results['low']) * PENALTY_LOW
 
+		# Extra penalty if many critical issues
+		if len(security_results['critical']) >= 3:
+			score -= 10  # Additional penalty for multiple critical issues
+
 		return max(0, score)
 
 	def _calculate_docker_score(self, docker_results):
 		"""
-		Calculate Docker score out of 100 (FIXED: unbiased scoring).
-
-		Scoring logic:
-		- No Docker files: Neutral score (70/100) - not penalized, not rewarded
-		- Has Docker files with no issues: Perfect (100/100)
-		- Has Docker files with issues: Deduct points based on severity
-
-		Returns:
-			int: Score 0-100
+		Calculate Docker score out of 100.
 		"""
 		has_docker_files = docker_results['dockerfiles'] or docker_results['compose_files']
 
-		# If no Docker files, give neutral score
+		# No Docker files = neutral score
 		if not has_docker_files:
 			return DOCKER_NEUTRAL_SCORE
 
-		# Has Docker files - start at 100 and deduct for issues
+		# Has Docker files - start at 100 and deduct
 		score = 100
 
 		score -= len(docker_results['critical']) * PENALTY_CRITICAL
@@ -162,16 +153,26 @@ class SecurityScoreCalculator:
 	def _calculate_best_practices_score(self, security_results, structure):
 		"""
 		Calculate best practices score out of 100.
-		Sum of points for each practice followed.
 
-		Returns:
-			int: Score 0-100
+		Enhanced: Consider test quality.
 		"""
 		score = 0
 
-		# Tests present (+30 points)
+		# Tests present (up to 30 points)
 		if structure.get('has_tests'):
-			score += POINTS_TESTS
+			score += POINTS_TESTS_BASE
+
+			# Bonus for test quality
+			test_quality = structure.get('test_quality', 'unknown')
+			quality_bonus = {
+				'extensive': 10,
+				'good': 7,
+				'basic': 4,
+				'minimal': 2,
+				'empty': 0,
+				'unknown': 5
+			}
+			score += quality_bonus.get(test_quality, 5)
 
 		# CI/CD configured (+25 points)
 		if structure.get('has_ci'):
@@ -193,18 +194,10 @@ class SecurityScoreCalculator:
 		if no_secrets:
 			score += POINTS_NO_SECRETS
 
-		return score
+		return min(100, score)  # Cap at 100
 
 	def _calculate_grade(self, score):
-		"""
-		Return letter grade based on score.
-
-		Args:
-			score: Numeric score 0-100
-
-		Returns:
-			str: Letter grade (A+ to F)
-		"""
+		"""Return letter grade based on score."""
 		if score >= 95:
 			return 'A+'
 		elif score >= 90:
@@ -229,15 +222,7 @@ class SecurityScoreCalculator:
 			return 'F'
 
 	def _get_score_description(self, score):
-		"""
-		Return human-readable description based on score.
-
-		Args:
-			score: Numeric score 0-100
-
-		Returns:
-			str: Description
-		"""
+		"""Return human-readable description based on score."""
 		if score >= 90:
 			return "Excellent! Very few security issues detected."
 		elif score >= 75:
