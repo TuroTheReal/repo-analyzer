@@ -11,6 +11,7 @@ IMPROVEMENTS:
 - Full integration with main analyzer
 - Deduplication with security scanner
 - Enhanced vulnerability reporting
+- Graceful fallback support
 """
 
 import subprocess
@@ -18,20 +19,44 @@ import json
 import os
 import shutil
 from pathlib import Path
+from typing import Dict, Optional
 from rich.console import Console
 
 console = Console()
 
+
 class TrivyScanner:
     """Integration with Trivy for vulnerability scanning."""
 
-    def __init__(self, repo_path):
+    # Statuts possibles
+    STATUS_AVAILABLE = 'available'
+    STATUS_NOT_INSTALLED = 'not_installed'
+    STATUS_ERROR = 'error'
+    STATUS_TIMEOUT = 'timeout'
+
+    def __init__(self, repo_path: str):
         """
         Args:
             repo_path: Path to repository to scan
         """
         self.repo_path = repo_path
         self.trivy_available = self._check_trivy_installed()
+        self.last_scan_status = None
+        self.last_error = None
+
+    def is_available(self) -> bool:
+        """Retourne True si Trivy est installé et fonctionnel"""
+        return self.trivy_available
+
+    def get_status(self) -> str:
+        """Retourne le statut du dernier scan ou de l'installation"""
+        if not self.trivy_available:
+            return self.STATUS_NOT_INSTALLED
+        return self.last_scan_status or self.STATUS_AVAILABLE
+
+    def get_last_error(self) -> Optional[str]:
+        """Retourne la dernière erreur rencontrée"""
+        return self.last_error
 
     def _check_trivy_installed(self):
         """Check if Trivy is installed and accessible."""
@@ -54,14 +79,15 @@ class TrivyScanner:
         except Exception:
             return False
 
-    def scan_filesystem(self):
+    def scan_filesystem(self) -> Dict:
         """
         Scan filesystem for vulnerabilities in dependencies.
 
         Returns:
-            dict: Vulnerability results by severity
+            dict: Vulnerability results by severity with source tracking
         """
         if not self.trivy_available:
+            self.last_scan_status = self.STATUS_NOT_INSTALLED
             return self._empty_results()
 
         console.print("[yellow]⏳ Running Trivy vulnerability scan...[/yellow]")
@@ -87,27 +113,54 @@ class TrivyScanner:
 
             if not result.stdout.strip():
                 console.print("[dim]ℹ️  Trivy: No vulnerabilities found[/dim]")
-                return self._empty_results()
+                self.last_scan_status = self.STATUS_AVAILABLE
+                empty_result = self._empty_results()
+                empty_result['source'] = 'trivy'
+                empty_result['scan_successful'] = True
+                return empty_result
 
             data = json.loads(result.stdout)
             parsed = self._parse_trivy_results(data)
+            parsed['source'] = 'trivy'
+            parsed['scan_successful'] = True
 
             if parsed['total'] > 0:
                 console.print(f"[green]✓[/green] Trivy scan complete: {parsed['total']} vulnerabilities found")
             else:
                 console.print("[green]✓[/green] Trivy scan complete: No vulnerabilities")
 
+            self.last_scan_status = self.STATUS_AVAILABLE
             return parsed
 
         except subprocess.TimeoutExpired:
             console.print("[yellow]⚠️  Trivy scan timed out (180s)[/yellow]")
-            return self._empty_results()
-        except json.JSONDecodeError:
+            self.last_scan_status = self.STATUS_TIMEOUT
+            self.last_error = "Scan timed out after 180 seconds"
+            result = self._empty_results()
+            result['source'] = 'trivy'
+            result['scan_successful'] = False
+            result['error'] = self.last_error
+            return result
+
+        except json.JSONDecodeError as e:
             console.print("[yellow]⚠️  Failed to parse Trivy output[/yellow]")
-            return self._empty_results()
+            self.last_scan_status = self.STATUS_ERROR
+            self.last_error = f"JSON parse error: {str(e)[:100]}"
+            result = self._empty_results()
+            result['source'] = 'trivy'
+            result['scan_successful'] = False
+            result['error'] = self.last_error
+            return result
+
         except Exception as e:
             console.print(f"[yellow]⚠️  Trivy scan error: {e}[/yellow]")
-            return self._empty_results()
+            self.last_scan_status = self.STATUS_ERROR
+            self.last_error = str(e)[:200]
+            result = self._empty_results()
+            result['source'] = 'trivy'
+            result['scan_successful'] = False
+            result['error'] = self.last_error
+            return result
 
     def scan_docker_images(self, dockerfiles):
         """
@@ -249,7 +302,7 @@ class TrivyScanner:
 
         return 0.0
 
-    def _empty_results(self):
+    def _empty_results(self) -> Dict:
         """Return empty results structure."""
         return {
             'critical': [],
@@ -257,6 +310,8 @@ class TrivyScanner:
             'medium': [],
             'low': [],
             'total': 0,
+            'source': 'trivy',
+            'scan_successful': False,
             'by_package': {},
             'stats': {
                 'critical_count': 0,
