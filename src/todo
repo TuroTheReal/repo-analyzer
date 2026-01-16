@@ -13,6 +13,5 @@ reporter.py - Sources + recommandations	🟡
 html_reporter.py - Sources + fix donut	🟡
 Tests du système	🟠
 Makefile update	🟠
-Veux-tu que je continue avec les modifications restantes maintenant ?
 
 La base est fonctionnelle - le fallback cascade et le scoring équitable sont en place. Les modifications restantes sont surtout pour l'affichage (reporters) et le fix .env.
