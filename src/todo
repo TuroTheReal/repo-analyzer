@@ -10,7 +10,7 @@ Reste à faire :
 Tâche	Priorité
 security.py - Fix .env intelligente	🟡
 reporter.py - Sources + recommandations	🟡
-html_reporter.py - Sources + fix donut	🟡
+md/html_reporter.py - Sources + fix donut	🟡
 Tests du système	🟠
 Makefile update	🟠
 
