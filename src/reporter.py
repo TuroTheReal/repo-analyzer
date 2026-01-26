@@ -88,11 +88,45 @@ class ReportGenerator:
 		if score_data.get('is_local_analysis'):
 			md += "> **Note:** This is a local analysis. GitHub metadata (stars, forks, contributors) are not available.\n\n"
 
-		md += "| Component | Score | Weight |\n"
-		md += "|-----------|-------|--------|\n"
-		md += f"| Security | {score_data['security_score']}/100 | 50% |\n"
-		md += f"| Docker | {score_data['docker_score']}/100 | 30% |\n"
-		md += f"| Best Practices | {score_data['best_practices_score']}/100 | 20% |\n\n"
+		# Score breakdown - ONLY applicable sections (hide N/A completely)
+		md += "| Section | Score | Weight |\n"
+		md += "|---------|-------|--------|\n"
+
+		breakdown = score_data.get('breakdown', {})
+
+		# Security - always applicable
+		sec = breakdown.get('security', {})
+		md += f"| 🔒 Security | {sec.get('score', 0)}/100 | {sec.get('weight', 0)}% |\n"
+
+		# Dependencies - only if applicable
+		deps = breakdown.get('dependencies', {})
+		if deps.get('score') is not None and deps.get('score') != 'N/A':
+			md += f"| 📦 Dependencies | {deps.get('score')}/100 | {deps.get('weight', 0)}% |\n"
+
+		# Docker - only if applicable
+		docker = breakdown.get('docker', {})
+		if docker.get('score') is not None and docker.get('score') != 'N/A':
+			md += f"| 🐳 Docker | {docker.get('score')}/100 | {docker.get('weight', 0)}% |\n"
+
+		# Best Practices - always applicable
+		bp = breakdown.get('best_practices', {})
+		md += f"| ✨ Best Practices | {bp.get('score', score_data.get('best_practices_score', 0))}/100 | {bp.get('weight', 0)}% |\n"
+
+		md += "\n"
+
+		# Scan sources
+		scan_sources = score_data.get('scan_sources', []) or security_results.get('sources', [])
+		if scan_sources:
+			md += f"**Vulnerability sources:** {', '.join(scan_sources)}\n\n"
+
+		# Recommendations d'outils
+		tool_recommendations = score_data.get('recommendations', []) or security_results.get('recommendations', [])
+		if tool_recommendations:
+			md += "> 💡 **Tool Recommendations:**\n"
+			for rec in tool_recommendations:
+				md += f"> - {rec}\n"
+			md += "\n"
+
 		md += "---\n\n"
 
 		# Table of contents
@@ -104,9 +138,12 @@ class ReportGenerator:
 			md += "- [Contributors](#contributors)\n"
 		md += "- [Structure](#structure)\n"
 		md += "- [Best Practices](#best-practices)\n"
-		if docker_results['total'] > 0 or docker_results['dockerfiles'] or docker_results['compose_files']:
+		# Docker - only if Dockerfiles present
+		has_docker = docker_results.get('dockerfiles') or docker_results.get('compose_files')
+		if has_docker:
 			md += "- [Docker Configuration](#docker-configuration)\n"
-		md += "- [Dependencies](#dependencies)\n"
+		if dependencies:
+			md += "- [Dependencies](#dependencies)\n"
 		md += "- [Security](#security)\n"
 		md += "- [Recommendations](#recommendations)\n\n"
 		md += "---\n\n"
@@ -185,8 +222,9 @@ class ReportGenerator:
 		# Best Practices Section
 		md += self._generate_best_practices_section(structure, security_results, score_data)
 
-		# Docker Configuration
-		if docker_results['total'] > 0 or docker_results['dockerfiles'] or docker_results['compose_files']:
+		# Docker Configuration - only if Docker files present
+		has_docker = docker_results.get('dockerfiles') or docker_results.get('compose_files')
+		if has_docker:
 			md += "## 🐳 Docker Configuration\n\n"
 
 			if docker_results['dockerfiles']:
@@ -252,11 +290,21 @@ class ReportGenerator:
 		# Security
 		md += "## 🔒 Security\n\n"
 
+		# Afficher les sources de scan
+		sources = security_results.get('sources', [])
+		if sources:
+			md += f"**Scanned by:** {', '.join(sources)}\n\n"
+
+		# Afficher les stats de déduplication si disponibles
+		dedup_stats = security_results.get('dedup_stats', {})
+		if dedup_stats.get('duplicates_removed', 0) > 0:
+			md += f"*{dedup_stats['duplicates_removed']} duplicate CVEs removed across sources*\n\n"
+
 		total_issues = security_results['total']
 
 		if total_issues == 0:
 			md += "✅ **No security issues detected!**\n\n"
-			md += "The scan found no exposed secrets, sensitive files, or outdated dependencies.\n\n"
+			md += "The scan found no exposed secrets, sensitive files, or vulnerable dependencies.\n\n"
 		else:
 			md += f"⚠️ **{total_issues} issue(s) detected**\n\n"
 
@@ -283,25 +331,51 @@ class ReportGenerator:
 				md += f"### {severity_names[severity]} ({len(alerts)})\n\n"
 
 				for alert in alerts:
-					if alert["type"] == "secret_exposed":
-						md += f"**Secret detected: {alert['secret_type'].replace('_', ' ').title()}**\n\n"
-						md += f"- **File:** `{alert['file']}:{alert['line']}`\n"
-						md += f"- **Preview:** `{alert['preview'][:80]}...`\n\n"
+					alert_type = alert.get("type", "")
 
-					elif alert["type"] == "sensitive_file":
-						md += f"**Sensitive file: `{alert['file']}`**\n\n"
-						md += f"- {alert['message']}\n\n"
+					if alert_type == "secret_exposed":
+						md += f"**Secret detected: {alert.get('secret_type', 'unknown').replace('_', ' ').title()}**\n\n"
+						md += f"- **File:** `{alert.get('file', 'N/A')}:{alert.get('line', '?')}`\n"
+						if alert.get('preview'):
+							md += f"- **Preview:** `{alert['preview'][:80]}...`\n"
+						md += "\n"
 
-					elif alert["type"] == "outdated_dependency":
-						md += f"**Outdated dependency: {alert['package']}**\n\n"
-						md += f"- **Current version:** {alert['current_version']}\n"
-						md += f"- **Recommended version:** >={alert['min_safe_version']}\n"
-						md += f"- **Reason:** {alert['message']}\n\n"
+					elif alert_type == "sensitive_file":
+						md += f"**Sensitive file: `{alert.get('file', 'N/A')}`**\n\n"
+						md += f"- {alert.get('message', '')}\n"
+						if alert.get('recommendation'):
+							md += f"- 💡 {alert['recommendation']}\n"
+						md += "\n"
+
+					elif alert_type in ["vulnerability", "dependency_vulnerability"]:
+						# CVE vulnerability (from Trivy, auditors, or OSV)
+						cve_id = alert.get('cve_id', 'N/A')
+						package = alert.get('package', 'unknown')
+						installed_ver = alert.get('installed_version', 'N/A')
+						fixed_ver = alert.get('fixed_version', 'No fix available')
+						source = alert.get('source', 'unknown')
+
+						md += f"**{cve_id}** - `{package}`\n\n"
+						md += f"- **Package:** {package} ({installed_ver})\n"
+						md += f"- **Fixed in:** {fixed_ver}\n"
+						if alert.get('title'):
+							md += f"- **Title:** {alert['title'][:100]}\n"
+						md += f"- **Source:** {source}\n"
+						md += "\n"
+
+					elif alert_type == "outdated_dependency":
+						md += f"**Outdated dependency: {alert.get('package', 'unknown')}**\n\n"
+						md += f"- **Current version:** {alert.get('current_version', 'N/A')}\n"
+						md += f"- **Recommended version:** >={alert.get('min_safe_version', 'N/A')}\n"
+						md += f"- **Reason:** {alert.get('message', '')}\n\n"
 
 					else:
 						md += f"**{alert.get('message', 'Alert')}**\n\n"
 						if 'file' in alert:
-							md += f"- **File:** `{alert['file']}`\n\n"
+							md += f"- **File:** `{alert['file']}`\n"
+						if 'recommendation' in alert:
+							md += f"- 💡 {alert['recommendation']}\n"
+						md += "\n"
 
 		# Recommendations
 		md += "## 💡 Recommendations\n\n"

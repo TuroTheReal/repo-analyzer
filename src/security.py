@@ -530,19 +530,37 @@ class SecurityScanner:
 				relative_path = os.path.relpath(file_path, self.repo_path)
 
 				# Check for .env files (but not .env.example)
-				if file.endswith('.env') and not any(ex in file for ex in ['.example', '.sample', '.template']):
+				if file.endswith('.env') or file.startswith('.env'):
+					# Skip example/template files
+					if any(ex in file for ex in ['.example', '.sample', '.template', '.dist']):
+						continue
+
 					self.sensitive_files_found.add(relative_path)
 
-					# Check if .env is in .gitignore
-					recommendation = "🔒 CRITICAL: Ensure this file is in .gitignore and NEVER commit secrets. Create a .env.example file with placeholder values for documentation."
+					# Analyze .env content to determine if it contains real secrets
+					env_analysis = self._analyze_env_file(file_path)
 
-					self.alerts.append({
-						"type": "sensitive_file",
-						"severity": "high",
-						"file": relative_path,
-						"message": f"⚠️ Environment file: {file}",
-						"recommendation": recommendation
-					})
+					if env_analysis['has_real_secrets']:
+						# Real secrets detected - HIGH severity
+						self.alerts.append({
+							"type": "sensitive_file",
+							"severity": "high",
+							"file": relative_path,
+							"message": f"⚠️ Environment file with secrets: {file}",
+							"recommendation": "🔒 CRITICAL: Ensure this file is in .gitignore and NEVER commit secrets. Create a .env.example file with placeholder values for documentation.",
+							"details": env_analysis
+						})
+					elif env_analysis['has_values']:
+						# Has values but likely placeholders - MEDIUM severity
+						self.alerts.append({
+							"type": "sensitive_file",
+							"severity": "medium",
+							"file": relative_path,
+							"message": f"Environment file detected: {file}",
+							"recommendation": "Verify this file doesn't contain real secrets. Consider using .env.example for templates.",
+							"details": env_analysis
+						})
+					# If only empty values or comments, no alert (file is safe)
 					continue
 
 				# Check other sensitive files
@@ -559,6 +577,153 @@ class SecurityScanner:
 							"recommendation": "Ensure this file is in .gitignore and contains no hardcoded secrets"
 						})
 						break
+
+	def _analyze_env_file(self, file_path):
+		"""
+		Analyse le contenu d'un fichier .env pour déterminer s'il contient de vrais secrets.
+
+		Returns:
+			dict: Analyse du fichier avec:
+				- has_real_secrets: bool - True si secrets réels détectés
+				- has_values: bool - True si des valeurs non-vides existent
+				- total_vars: int - Nombre de variables
+				- empty_vars: int - Variables vides ou placeholders
+				- suspicious_vars: list - Variables suspectes
+		"""
+		result = {
+			'has_real_secrets': False,
+			'has_values': False,
+			'total_vars': 0,
+			'empty_vars': 0,
+			'placeholder_vars': 0,
+			'suspicious_vars': []
+		}
+
+		# Patterns indiquant des placeholders (pas de vrais secrets)
+		placeholder_patterns = [
+			r'^$',  # Vide
+			r'^your[_-]?',  # your_, your-, your_api_key_here
+			r'.*_here$',  # xxx_here, your_key_here
+			r'^change[_-]?me',
+			r'^xxx+',  # xxx, xxxx, etc.
+			r'^placeholder',
+			r'^example',
+			r'^insert[_-]?',
+			r'^replace[_-]?',
+			r'^todo',
+			r'^fixme',
+			r'^\<.*\>$',  # <YOUR_KEY>
+			r'^\[.*\]$',  # [YOUR_KEY]
+			r'^\$\{.*\}$',  # ${VAR}
+			r'^dummy',
+			r'^test$',
+			r'^sample',
+			r'^none$',
+			r'^null$',
+			r'^undefined$',
+			r'^fill[_-]?in',  # fill_in, fillin
+			r'^enter[_-]?here',
+			r'^put[_-]?here',
+			r'^add[_-]?here',
+			r'^\*+$',  # ***, ****
+			r'^\.\.\.+$',  # ..., ....
+		]
+
+		try:
+			with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
+				for line in f:
+					line = line.strip()
+
+					# Skip comments and empty lines
+					if not line or line.startswith('#'):
+						continue
+
+					# Parse KEY=VALUE
+					if '=' in line:
+						key, _, value = line.partition('=')
+						key = key.strip()
+						value = value.strip().strip('"').strip("'")
+
+						result['total_vars'] += 1
+
+						# Check if value is empty
+						if not value:
+							result['empty_vars'] += 1
+							continue
+
+						# Check if value is a placeholder
+						value_lower = value.lower()
+						is_placeholder = any(
+							re.match(pattern, value_lower)
+							for pattern in placeholder_patterns
+						)
+
+						if is_placeholder:
+							result['placeholder_vars'] += 1
+							continue
+
+						# Value exists and is not a placeholder
+						result['has_values'] = True
+
+						# Check if it looks like a real secret (high entropy or known patterns)
+						if self._looks_like_real_secret(key, value):
+							result['has_real_secrets'] = True
+							result['suspicious_vars'].append(key)
+
+		except Exception:
+			pass
+
+		return result
+
+	def _looks_like_real_secret(self, key, value):
+		"""
+		Détermine si une valeur ressemble à un vrai secret.
+
+		Args:
+			key: Nom de la variable
+			value: Valeur de la variable
+
+		Returns:
+			bool: True si ça ressemble à un vrai secret
+		"""
+		key_lower = key.lower()
+		value_lower = value.lower()
+
+		# Keys qui indiquent des secrets
+		secret_key_patterns = [
+			'password', 'passwd', 'pwd',
+			'secret', 'token', 'api_key', 'apikey',
+			'private_key', 'access_key', 'auth',
+			'credential', 'jwt', 'bearer'
+		]
+
+		is_secret_key = any(pattern in key_lower for pattern in secret_key_patterns)
+
+		# Si c'est une clé de secret, vérifier la valeur
+		if is_secret_key:
+			# Valeurs génériques qui ne sont pas de vrais secrets
+			generic_values = [
+				'password', 'secret', 'token', 'changeme', 'admin',
+				'test', 'demo', 'example', 'sample', '123456', 'password123'
+			]
+			if value_lower in generic_values:
+				return False
+
+			# Vérifier l'entropie
+			if len(value) >= 16 and self._calculate_entropy(value) > ENTROPY_THRESHOLD_MEDIUM:
+				return True
+
+			# Vérifier les patterns de vrais secrets
+			for pattern in self.SECRET_PATTERNS.values():
+				if re.search(pattern, value):
+					return True
+
+		# Vérifier si la valeur matche un pattern de secret connu
+		for secret_type, pattern in self.SECRET_PATTERNS.items():
+			if re.search(pattern, value):
+				return True
+
+		return False
 
 	def _check_gitignore(self):
 		"""Check .gitignore configuration."""

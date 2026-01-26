@@ -345,10 +345,37 @@ class HTMLReportGenerator:
 		"""Generate security section with alerts. FIXED: No nested displays, proper escaping."""
 		total = security_results['total']
 
+		# Sources info
+		sources = security_results.get('sources', [])
+		sources_html = ""
+		if sources:
+			sources_str = ', '.join(sources)
+			sources_html = f'<div style="color: var(--text-secondary); font-size: 0.9rem; margin-bottom: 1rem;">📦 Scanned by: {sources_str}</div>'
+
+		# Dedup stats
+		dedup_stats = security_results.get('dedup_stats', {})
+		dedup_html = ""
+		if dedup_stats.get('duplicates_removed', 0) > 0:
+			dedup_html = f'<div style="color: var(--text-secondary); font-size: 0.85rem; margin-bottom: 1rem; font-style: italic;">🔄 {dedup_stats["duplicates_removed"]} duplicate CVEs removed across sources</div>'
+
+		# Recommendations
+		recommendations = security_results.get('recommendations', [])
+		rec_html = ""
+		if recommendations:
+			rec_items = ''.join([f'<li style="margin-bottom: 0.5rem;">{rec}</li>' for rec in recommendations])
+			rec_html = f'''
+			<div style="background: var(--bg-tertiary); padding: 1rem; border-radius: 8px; margin-bottom: 1.5rem; border-left: 3px solid var(--accent-yellow);">
+				<div style="font-weight: 600; margin-bottom: 0.5rem;">💡 Tool Recommendations</div>
+				<ul style="margin: 0; padding-left: 1.5rem; color: var(--text-secondary); font-size: 0.9rem;">{rec_items}</ul>
+			</div>
+			'''
+
 		if total == 0:
-			return """
+			return f"""
 			<div class="section">
 				<div class="section-title">🔒 Security Alerts</div>
+				{sources_html}
+				{rec_html}
 				<div style="text-align: center; padding: 3rem;">
 					<div style="font-size: 5rem; margin-bottom: 1rem;">✅</div>
 					<p style="font-size: 1.2rem; color: var(--accent-green);">
@@ -413,24 +440,33 @@ class HTMLReportGenerator:
 						details += f"<br><br><strong>💡 Best Practice:</strong><br>{rec}"
 
 				elif alert["type"] == "vulnerability":
-					# Trivy vulnerability
+					# Trivy or OSV vulnerability
 					pkg = escape_html(alert.get('package', 'unknown'))
 					cve = escape_html(alert.get('cve_id', 'N/A'))
+					source = escape_html(alert.get('source', 'trivy'))
 					title = f"Vulnerability: {pkg}"
 					installed = escape_html(alert.get('installed_version', 'unknown'))
 					fixed = escape_html(alert.get('fixed_version', 'N/A'))
 					desc = escape_html(alert.get('description', '')[:200])
-					details = f"<strong>CVE:</strong> {cve}<br><strong>Installed:</strong> {installed}<br><strong>Fixed:</strong> {fixed}<br><br>{desc}"
+					alert_title = escape_html(alert.get('title', '')[:100])
+					details = f"<strong>CVE:</strong> {cve}<br><strong>Installed:</strong> {installed}<br><strong>Fixed:</strong> {fixed}<br><strong>Source:</strong> {source}"
+					if alert_title:
+						details += f"<br><br><em>{alert_title}</em>"
+					if desc:
+						details += f"<br><br>{desc}"
 
 				elif alert["type"] == "dependency_vulnerability":
 					# Dependency audit vulnerability
 					pkg = escape_html(alert.get('package', 'unknown'))
 					cve = escape_html(alert.get('cve_id', 'N/A'))
+					source = escape_html(alert.get('source', 'auditor'))
 					title = f"Dependency vulnerability: {pkg}"
 					installed = escape_html(alert.get('installed_version', 'unknown'))
 					fixed = escape_html(alert.get('fixed_version', 'N/A'))
 					desc = escape_html(alert.get('description', '')[:200])
-					details = f"<strong>CVE:</strong> {cve}<br><strong>Installed:</strong> {installed}<br><strong>Fixed:</strong> {fixed}<br><br>{desc}"
+					details = f"<strong>CVE:</strong> {cve}<br><strong>Installed:</strong> {installed}<br><strong>Fixed:</strong> {fixed}<br><strong>Source:</strong> {source}"
+					if desc:
+						details += f"<br><br>{desc}"
 
 				else:
 					title = escape_html(alert.get('message', 'Alert'))
@@ -449,6 +485,9 @@ class HTMLReportGenerator:
 		return f"""
 		<div class="section">
 			<div class="section-title">⚠️ Security Alerts ({total})</div>
+			{sources_html}
+			{dedup_html}
+			{rec_html}
 			{filters_html}
 			<div class="alerts-container">
 				{alerts_html}
@@ -599,6 +638,59 @@ class HTMLReportGenerator:
 			'labels': list(top_types.keys()),
 			'data': list(top_types.values())
 		}
+
+	def _generate_score_breakdown_html(self, score_data):
+		"""Generate HTML for score breakdown - ONLY applicable sections (hide N/A)."""
+		breakdown = score_data.get('breakdown', {})
+		html = ""
+
+		# Security section - always applicable
+		sec = breakdown.get('security', {})
+		sec_score = sec.get('score', score_data.get('security_score', 0))
+		sec_weight = sec.get('weight', 50)
+		html += f'''
+			<div class="breakdown-item">
+				<div class="breakdown-label">🔒 Security ({sec_weight}%)</div>
+				<div class="breakdown-value">{sec_score}</div>
+			</div>
+		'''
+
+		# Dependencies section - only if applicable
+		deps = breakdown.get('dependencies', {})
+		deps_score = deps.get('score')
+		if deps_score is not None and deps_score != 'N/A':
+			deps_weight = deps.get('weight', 0)
+			html += f'''
+				<div class="breakdown-item">
+					<div class="breakdown-label">📦 Dependencies ({deps_weight}%)</div>
+					<div class="breakdown-value">{deps_score}</div>
+				</div>
+			'''
+
+		# Docker section - only if applicable
+		docker = breakdown.get('docker', {})
+		docker_score = docker.get('score')
+		if docker_score is not None and docker_score != 'N/A':
+			docker_weight = docker.get('weight', 0)
+			html += f'''
+				<div class="breakdown-item">
+					<div class="breakdown-label">🐳 Docker ({docker_weight}%)</div>
+					<div class="breakdown-value">{docker_score}</div>
+				</div>
+			'''
+
+		# Best practices section - always applicable
+		bp = breakdown.get('best_practices', {})
+		bp_score = bp.get('score', score_data.get('best_practices_score', 0))
+		bp_weight = bp.get('weight', 15)
+		html += f'''
+			<div class="breakdown-item">
+				<div class="breakdown-label">✨ Best Practices ({bp_weight}%)</div>
+				<div class="breakdown-value">{bp_score}</div>
+			</div>
+		'''
+
+		return html
 
 	def _build_html(self, owner, repo, repo_info, languages,
 					contributors, structure, dependencies, security_results, docker_results):
@@ -813,14 +905,15 @@ class HTMLReportGenerator:
 	}}
 
 	/* FIXED: Chart container with proper overflow constraints */
+	/* Added padding for hover offset so donut segments don't get clipped */
 	.chart-container {{
 		position: relative;
 		width: 100%;
 		max-width: 100%;
 		height: auto;
 		margin: 2rem auto;
-		padding: 1rem;
-		overflow: hidden; /* Prevent overflow */
+		padding: 1.5rem;
+		overflow: visible; /* Allow hover overflow */
 	}}
 
 	.chart-wrapper {{
@@ -828,7 +921,8 @@ class HTMLReportGenerator:
 		width: 100%;
 		max-width: 600px;
 		margin: 0 auto;
-		overflow: hidden; /* Prevent overflow */
+		padding: 10px; /* Extra padding for hover offset */
+		overflow: visible; /* Allow hover overflow */
 	}}
 
 	.chart-wrapper canvas {{
@@ -1314,18 +1408,7 @@ class HTMLReportGenerator:
 			</div>
 			''' if score_data.get('is_local_analysis') else ''}
 			<div class="score-breakdown">
-				<div class="breakdown-item">
-					<div class="breakdown-label">Security (50%)</div>
-					<div class="breakdown-value">{score_data['security_score']}</div>
-				</div>
-				<div class="breakdown-item">
-					<div class="breakdown-label">Docker (30%)</div>
-					<div class="breakdown-value">{score_data['docker_score']}</div>
-				</div>
-				<div class="breakdown-item">
-					<div class="breakdown-label">Best Practices (20%)</div>
-					<div class="breakdown-value">{score_data['best_practices_score']}</div>
-				</div>
+				{self._generate_score_breakdown_html(score_data)}
 			</div>
 		</div>
 	</div>
