@@ -45,6 +45,14 @@ def domain_for_iac_type(file_type: str | None) -> Domain:
     return _IAC_TYPE_DOMAIN.get((file_type or "").strip().lower(), Domain.IAC)
 
 
+def workflow_files(root: Path) -> list[Path]:
+    """GitHub Actions workflow files under ``.github/workflows`` (pipeline domain)."""
+    workflows = root / ".github" / "workflows"
+    if not workflows.is_dir():
+        return []
+    return sorted(p for p in workflows.iterdir() if p.is_file() and p.suffix in (".yml", ".yaml"))
+
+
 def relative_to_root(path: object, root: "Path | None") -> str | None:
     """Make a tool-reported path relative to the scan root when possible.
 
@@ -98,19 +106,22 @@ class Runner(ABC):
         raise NotImplementedError
 
 
-def run_command(cmd: list[str], cwd: Path, timeout: int) -> str:
+def run_command(cmd: list[str], cwd: Path, timeout: int, ok_codes: tuple[int, ...] = (0,)) -> str:
     """Run ``cmd`` (argv form) in ``cwd`` and return its stdout.
 
     Args:
         cmd: Command and arguments, never passed through a shell.
         cwd: Working directory.
         timeout: Hard timeout in seconds.
+        ok_codes: Exit codes treated as success. Most tools use a no-fail flag so
+            only 0 is success; a few (e.g. actionlint) use a non-zero code to mean
+            "issues found", which is not a tool failure.
 
     Returns:
         Captured stdout.
 
     Raises:
-        RunnerError: If the command times out or exits non-zero.
+        RunnerError: If the command times out or exits with a code not in ``ok_codes``.
     """
     try:
         proc = subprocess.run(
@@ -126,7 +137,7 @@ def run_command(cmd: list[str], cwd: Path, timeout: int) -> str:
     except FileNotFoundError as exc:
         raise RunnerError(f"{cmd[0]} not found on PATH") from exc
 
-    if proc.returncode != 0:
+    if proc.returncode not in ok_codes:
         stderr = (proc.stderr or "").strip()
         raise RunnerError(
             f"{cmd[0]} exited with code {proc.returncode}: {stderr[:500] or '<no stderr>'}"

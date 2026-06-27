@@ -219,7 +219,7 @@ _TEMPLATE = _ENV.from_string(
 
   <div class="tabs">
     <div class="tab active" data-tab="project">Code &amp; Infra<span class="n">{{ project_cards | length }}</span></div>
-    <div class="tab" data-tab="ci">CI/CD<span class="n">roadmap</span></div>
+    <div class="tab" data-tab="ci">CI/CD<span class="n">{{ ci_cards | length }}</span></div>
     <div class="tab" data-tab="repo">Repo<span class="n">roadmap</span></div>
   </div>
 
@@ -265,7 +265,7 @@ _TEMPLATE = _ENV.from_string(
     {% if ci_cards %}
     <div style="margin-top: 18px">{% for f in ci_cards %}{{ card(f) }}{% endfor %}</div>
     {% else %}
-    <div class="empty"><div class="big">CI/CD pipeline scanning</div>Not yet scanned. Roadmap: GitHub Actions audit (zizmor + actionlint).</div>
+    <div class="empty clean"><div class="big">✓ No pipeline findings</div>GitHub Actions workflows scanned by zizmor + actionlint.</div>
     {% endif %}
   </section>
 
