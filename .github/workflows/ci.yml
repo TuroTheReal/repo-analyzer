@@ -1,0 +1,66 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install package + dev deps
+        run: pip install -e ".[dev]"
+      - name: Run pytest
+        run: pytest
+
+  security:
+    name: security gate (self-scan)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      security-events: write  # required to upload SARIF to code scanning
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install scanners
+        run: |
+          set -euxo pipefail
+          # Trivy (official install script)
+          curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sh -s -- -b /usr/local/bin
+          # grype (official Anchore install script)
+          curl -sSfL https://raw.githubusercontent.com/anchore/grype/main/install.sh | sh -s -- -b /usr/local/bin
+          # gitleaks (pinned release binary)
+          GITLEAKS_VERSION=8.21.2
+          curl -sSfL "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz" | tar -xz -C /tmp gitleaks
+          sudo install /tmp/gitleaks /usr/local/bin/gitleaks
+          # hadolint (latest release binary)
+          sudo curl -sSfL https://github.com/hadolint/hadolint/releases/latest/download/hadolint-Linux-x86_64 -o /usr/local/bin/hadolint
+          sudo chmod +x /usr/local/bin/hadolint
+          # checkov (PyPI)
+          pip install checkov
+
+      - name: Install repo-analyzer
+        run: pip install -e .
+
+      - name: Run the gate (repo-analyzer scans itself)
+        run: repo-analyzer . --output-dir repo-analyzer-report
+
+      - name: Upload SARIF to code scanning
+        if: always()  # publish findings even when the gate fails the job
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: repo-analyzer-report/report.sarif

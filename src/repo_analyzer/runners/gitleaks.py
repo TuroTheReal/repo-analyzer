@@ -13,7 +13,7 @@ import tempfile
 from pathlib import Path
 
 from ..core.finding import Domain, Finding, Severity
-from .base import Runner, RunnerError, RunnerResult, run_command
+from .base import Runner, RunnerError, RunnerResult, relative_to_root, run_command
 
 
 _TIMEOUT_SECONDS = 180
@@ -24,7 +24,6 @@ class GitleaksRunner(Runner):
 
     name = "gitleaks"
     binary = "gitleaks"
-    domains = (Domain.SECRETS,)
 
     def run(self, root: Path) -> RunnerResult:
         # gitleaks cannot write its report to a subprocess pipe (/dev/stdout),
@@ -73,7 +72,7 @@ class GitleaksRunner(Runner):
                     tool=self.name,
                     # Never include the secret value; only where and which rule.
                     message=f"Potential secret matched rule '{rule}'.",
-                    file=_relative(leak.get("File"), root),
+                    file=relative_to_root(leak.get("File"), root),
                     line=leak.get("StartLine") or None,
                     remediation="Rotate the credential and purge it from git history.",
                 )
@@ -81,11 +80,3 @@ class GitleaksRunner(Runner):
         return findings
 
 
-def _relative(path: str | None, root: Path | None) -> str | None:
-    """gitleaks reports absolute paths; make them relative to the scan root."""
-    if not path or root is None:
-        return path
-    try:
-        return str(Path(path).resolve().relative_to(root.resolve()))
-    except ValueError:
-        return path.lstrip("/")

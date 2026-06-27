@@ -45,6 +45,22 @@ def domain_for_iac_type(file_type: str | None) -> Domain:
     return _IAC_TYPE_DOMAIN.get((file_type or "").strip().lower(), Domain.IAC)
 
 
+def relative_to_root(path: object, root: "Path | None") -> str | None:
+    """Make a tool-reported path relative to the scan root when possible.
+
+    Accepts str / Path / None; falls back to a leading-slash-stripped string
+    when the path is outside root or the root is unknown.
+    """
+    if not path:
+        return None
+    if root is None:
+        return str(path).lstrip("/")
+    try:
+        return str(Path(path).resolve().relative_to(root.resolve()))
+    except ValueError:
+        return str(path).lstrip("/")
+
+
 @dataclass(frozen=True)
 class RunnerResult:
     """A runner's output.
@@ -71,8 +87,6 @@ class Runner(ABC):
     name: str
     #: Binary that must be on PATH for this runner to work.
     binary: str
-    #: Security domains this runner contributes to.
-    domains: tuple[Domain, ...]
 
     def is_available(self) -> bool:
         """Whether the underlying tool is installed and on PATH."""

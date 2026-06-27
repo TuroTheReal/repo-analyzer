@@ -11,7 +11,7 @@ import json
 from pathlib import Path
 
 from ..core.finding import Domain, Finding, Severity
-from .base import Runner, RunnerError, RunnerResult, run_command
+from .base import Runner, RunnerError, RunnerResult, relative_to_root, run_command
 
 
 _TIMEOUT_SECONDS = 60
@@ -31,7 +31,6 @@ class HadolintRunner(Runner):
 
     name = "hadolint"
     binary = "hadolint"
-    domains = (Domain.CONTAINER,)
 
     def run(self, root: Path) -> RunnerResult:
         dockerfiles = self._discover(root)
@@ -60,7 +59,7 @@ class HadolintRunner(Runner):
             data = json.loads(stdout) if stdout.strip() else []
         except json.JSONDecodeError as exc:
             raise RunnerError(f"hadolint returned invalid JSON: {exc}") from exc
-        return self._parse(data, _relative(dockerfile, root))
+        return self._parse(data, relative_to_root(dockerfile, root))
 
     def _parse(self, data: list, rel: str) -> list[Finding]:
         findings: list[Finding] = []
@@ -83,8 +82,3 @@ class HadolintRunner(Runner):
         return findings
 
 
-def _relative(path: Path, root: Path) -> str:
-    try:
-        return str(path.resolve().relative_to(root.resolve()))
-    except ValueError:
-        return path.name

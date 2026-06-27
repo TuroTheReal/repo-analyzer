@@ -10,7 +10,7 @@ import json
 from pathlib import Path
 
 from ..core.finding import Domain, Finding, Severity
-from .base import Runner, RunnerError, RunnerResult, run_command
+from .base import Runner, RunnerError, RunnerResult, relative_to_root, run_command
 
 
 # First run downloads grype's vulnerability DB, so allow a generous timeout.
@@ -29,7 +29,6 @@ class GrypeRunner(Runner):
 
     name = "grype"
     binary = "grype"
-    domains = (Domain.DEPENDENCIES,)
 
     def run(self, root: Path) -> RunnerResult:
         stdout = run_command(
@@ -67,23 +66,13 @@ class GrypeRunner(Runner):
                     domain=Domain.DEPENDENCIES,
                     tool=self.name,
                     message=(vuln.get("description") or f"Vulnerable dependency {package} {version}").strip(),
-                    file=_relative(locations[0].get("path"), root) if locations else None,
+                    file=relative_to_root(locations[0].get("path"), root) if locations else None,
                     resource=f"{package}@{version}" if version else package,
                     remediation=f"Upgrade {package} to {fixed[0]}" if fixed else None,
                     references=(data_source,) if data_source else (),
                 )
             )
         return findings
-
-
-def _relative(path: str | None, root: Path) -> str | None:
-    """Make an absolute grype path relative to the scanned root when possible."""
-    if not path:
-        return None
-    try:
-        return str(Path(path).resolve().relative_to(root.resolve()))
-    except ValueError:
-        return path.lstrip("/")
 
 
 def _has_manifests(root: Path) -> bool:

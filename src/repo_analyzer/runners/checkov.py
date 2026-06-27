@@ -11,7 +11,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from ..core.finding import Domain, Finding, Severity
+from ..core.finding import Finding, Severity
 from .base import Runner, RunnerError, RunnerResult, domain_for_iac_type, run_command
 
 
@@ -23,7 +23,6 @@ class CheckovRunner(Runner):
 
     name = "checkov"
     binary = "checkov"
-    domains = (Domain.IAC, Domain.CONTAINER)
 
     def run(self, root: Path) -> RunnerResult:
         stdout = run_command(

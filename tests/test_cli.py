@@ -28,7 +28,6 @@ def _make_runner(findings, available=True, raises=False, applicable_domains=froz
     class FakeRunner:
         name = "fake"
         binary = "fake"
-        domains = (Domain.IAC,)
 
         def is_available(self):
             return available
