@@ -1,0 +1,3 @@
+# Old, known-vulnerable pins (demo fixture) to exercise grype.
+requests==2.19.0
+flask==0.12.2

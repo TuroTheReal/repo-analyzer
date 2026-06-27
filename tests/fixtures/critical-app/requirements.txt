@@ -1,0 +1,6 @@
+# Pins with known CRITICAL CVEs (demo fixture) to exercise critical findings.
+# pyyaml 5.1: CVE-2020-1747 / CVE-2020-14343 (arbitrary code execution, CVSS 9.8)
+# django 2.2.0: CVE-2019-19844 (account takeover, CVSS 9.8)
+pyyaml==5.1
+django==2.2.0
+flask==0.12.2

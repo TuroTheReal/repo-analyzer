@@ -1,0 +1,10 @@
+# repo-analyzer configuration (used when scanning this repo itself).
+gate:
+  # Severities that make the gate fail the build.
+  fail_on: [critical, high]
+output:
+  formats: [sarif, markdown, html, json]
+  dir: repo-analyzer-report
+scan:
+  # The deliberately-vulnerable test fixtures must not gate our own repo.
+  skip_dirs: [tests/fixtures]

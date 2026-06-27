@@ -1,0 +1,24 @@
+# Deliberately insecure Kubernetes manifest (demo fixture).
+# Routes to the Container domain (Docker + K8s + Helm).
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ra-demo
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: ra-demo
+  template:
+    metadata:
+      labels:
+        app: ra-demo
+    spec:
+      containers:
+        - name: app
+          image: ra-demo:latest
+          securityContext:
+            privileged: true
+            runAsUser: 0
+          ports:
+            - containerPort: 8080

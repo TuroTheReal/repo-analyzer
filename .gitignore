@@ -5,3 +5,7 @@ output/
 .DS_Store
 venv/
 .venv/
+*.egg-info/
+.pytest_cache/
+tmp/
+repo-analyzer-report/
