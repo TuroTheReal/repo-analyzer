@@ -90,7 +90,7 @@ output:
 - [x] **M1**: Trivy IaC + core model + scoring + reporters + gate
 - [x] **M2**: Checkov, gitleaks, grype, hadolint + `skip_dirs` + dark HTML dashboard (SVG charts, severity filter)
 - [ ] **M3**: packaged GitHub Action + self-scan (dogfood)
-- [ ] **M4**: pipeline audit: zizmor + actionlint
+- [x] **M4**: pipeline audit (zizmor + actionlint) — Pipeline domain, self-scan hardens its own workflow (SHA-pinned actions)
 - [ ] **M5**: GitHub Pages demo dashboard
 - [ ] later: OpenSSF Scorecard (supply-chain posture)
 
