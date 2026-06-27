@@ -24,7 +24,7 @@ def _finding(severity, line=1) -> Finding:
     )
 
 
-def _make_runner(findings, available=True, raises=False, applicable_domains=frozenset({Domain.IAC})):
+def _make_runner(findings, available=True, raises=False, applicable_domains=frozenset({Domain.IAC}), raw=None):
     class FakeRunner:
         name = "fake"
         binary = "fake"
@@ -35,7 +35,7 @@ def _make_runner(findings, available=True, raises=False, applicable_domains=froz
         def run(self, root):
             if raises:
                 raise RunnerError("boom")
-            return RunnerResult(findings, applicable_domains)
+            return RunnerResult(findings, applicable_domains, raw=raw)
 
     return FakeRunner
 
@@ -154,6 +154,21 @@ def test_domain_assessed_only_via_skipped_paths_is_dropped_from_grade(monkeypatc
     payload = json.loads((out / "report.json").read_text(encoding="utf-8"))
     assert code == cli.EXIT_OK
     assert all(d["domain"] != "iac" for d in payload["score"]["domains"])
+
+
+def test_raw_report_written_when_provided(monkeypatch, tmp_path):
+    monkeypatch.setattr(cli, "ALL_RUNNERS", (_make_runner([_finding(Sev.LOW)], raw='{"ok": 1}'),))
+    out = tmp_path / "out"
+    cli.main([str(tmp_path), "--output-dir", str(out), "--format", "json"])
+    assert (out / "raw" / "fake.json").read_text(encoding="utf-8") == '{"ok": 1}'
+
+
+def test_no_raw_file_when_runner_withholds_raw(monkeypatch, tmp_path):
+    # raw=None (like gitleaks, which must never expose the secret) -> no raw file
+    monkeypatch.setattr(cli, "ALL_RUNNERS", (_make_runner([_finding(Sev.LOW)], raw=None),))
+    out = tmp_path / "out"
+    cli.main([str(tmp_path), "--output-dir", str(out), "--format", "json"])
+    assert not (out / "raw" / "fake.json").exists()
 
 
 def test_output_dir_pointing_at_a_file_returns_env_error(monkeypatch, tmp_path):

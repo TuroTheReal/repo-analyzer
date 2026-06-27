@@ -45,7 +45,7 @@ class GrypeRunner(Runner):
         # grype's matches-only output cannot tell "clean" from "no deps", so the
         # domain is assessed when there are matches or a dependency manifest.
         assessed = bool(data.get("matches")) or _has_manifests(root)
-        return RunnerResult(findings, frozenset({Domain.DEPENDENCIES}) if assessed else frozenset())
+        return RunnerResult(findings, frozenset({Domain.DEPENDENCIES}) if assessed else frozenset(), raw=stdout)
 
     def _parse(self, data: dict, root: Path) -> list[Finding]:
         findings: list[Finding] = []

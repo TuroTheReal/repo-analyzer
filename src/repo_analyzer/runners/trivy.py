@@ -40,7 +40,7 @@ class TrivyConfigRunner(Runner):
         # present even for clean files, so the set of types tells us which
         # domains were actually assessed.
         applicable = frozenset(domain_for_iac_type(r.get("Type")) for r in (data.get("Results") or []))
-        return RunnerResult(list(self._parse(data)), applicable)
+        return RunnerResult(list(self._parse(data)), applicable, raw=stdout)
 
     def _parse(self, data: dict) -> list[Finding]:
         """Translate Trivy's JSON into findings, routing each Result by file type."""

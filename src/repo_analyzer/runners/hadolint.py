@@ -35,11 +35,15 @@ class HadolintRunner(Runner):
     def run(self, root: Path) -> RunnerResult:
         dockerfiles = self._discover(root)
         findings: list[Finding] = []
+        combined: list = []  # raw issues across every Dockerfile
         for dockerfile in dockerfiles:
-            findings.extend(self._lint(dockerfile, root))
+            items, data = self._lint(dockerfile, root)
+            findings.extend(items)
+            if isinstance(data, list):
+                combined.extend(data)
         # Assessable only when at least one Dockerfile exists to lint.
         assessed = frozenset({Domain.CONTAINER}) if dockerfiles else frozenset()
-        return RunnerResult(findings, assessed)
+        return RunnerResult(findings, assessed, raw=json.dumps(combined) if dockerfiles else None)
 
     def _discover(self, root: Path) -> list[Path]:
         seen: set[Path] = set()
@@ -49,7 +53,7 @@ class HadolintRunner(Runner):
                     seen.add(path)
         return sorted(seen)
 
-    def _lint(self, dockerfile: Path, root: Path) -> list[Finding]:
+    def _lint(self, dockerfile: Path, root: Path) -> tuple[list[Finding], list]:
         stdout = run_command(
             ["hadolint", "--no-fail", "-f", "json", str(dockerfile)],
             cwd=root,
@@ -59,7 +63,7 @@ class HadolintRunner(Runner):
             data = json.loads(stdout) if stdout.strip() else []
         except json.JSONDecodeError as exc:
             raise RunnerError(f"hadolint returned invalid JSON: {exc}") from exc
-        return self._parse(data, relative_to_root(dockerfile, root))
+        return self._parse(data, relative_to_root(dockerfile, root)), data
 
     def _parse(self, data: list, rel: str) -> list[Finding]:
         findings: list[Finding] = []

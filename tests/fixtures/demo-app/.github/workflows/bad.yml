@@ -1,0 +1,10 @@
+# Deliberately insecure GitHub Actions workflow (demo fixture) for the Pipeline domain.
+name: bad
+on: [push]
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4  # unpinned action (zizmor: unpinned-uses)
+      - name: greet
+        run: echo "Building ${{ github.event.head_commit.message }}"  # script injection (zizmor: template-injection)

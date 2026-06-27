@@ -191,6 +191,7 @@ def build_context(report: Report) -> dict:
         "target": report.target,
         "generated_at": report.generated_at,
         "tools": ", ".join(report.tools) if report.tools else "none",
+        "raw_tools": report.raw_tools,
         "duplicates_removed": report.duplicates_removed,
         "total": score.total,
         "grade": score.grade,

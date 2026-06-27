@@ -37,7 +37,7 @@ class ActionlintRunner(Runner):
             data = json.loads(stdout) if stdout.strip() else []
         except json.JSONDecodeError as exc:
             raise RunnerError(f"actionlint returned invalid JSON: {exc}") from exc
-        return RunnerResult(self._parse(data), frozenset({Domain.PIPELINE}))
+        return RunnerResult(self._parse(data), frozenset({Domain.PIPELINE}), raw=stdout)
 
     def _parse(self, data: list) -> list[Finding]:
         findings: list[Finding] = []

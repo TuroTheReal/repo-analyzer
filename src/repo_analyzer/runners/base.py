@@ -86,6 +86,9 @@ class RunnerResult:
 
     findings: list[Finding]
     applicable_domains: frozenset[Domain]
+    #: The tool's native output, kept so the report can link it for digging.
+    #: None when it must not be exposed (gitleaks raw contains the secret value).
+    raw: str | None = None
 
 
 class Runner(ABC):
