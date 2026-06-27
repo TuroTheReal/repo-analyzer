@@ -7,7 +7,7 @@ the reporters can never disagree on the numbers.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from .core.finding import Finding
 from .core.scorer import ScoreResult
@@ -24,3 +24,5 @@ class Report:
     score: ScoreResult
     tools: list[str]
     duplicates_removed: int
+    #: Tools whose raw native report was written next to this report (raw/<tool>.json).
+    raw_tools: list[str] = field(default_factory=list)

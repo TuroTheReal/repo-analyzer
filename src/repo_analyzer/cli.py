@@ -95,15 +95,17 @@ def _is_skipped(file: str | None, skip_dirs: tuple[str, ...]) -> bool:
     return False
 
 
-def _run_scanners(target: Path) -> tuple[list[Finding], set[Domain], list[str]]:
+def _run_scanners(target: Path) -> tuple[list[Finding], set[Domain], list[str], dict[str, str]]:
     """Run every available runner.
 
-    Returns the findings, the set of domains that were actually *applicable*
-    (relevant files present), and the names of the tools that ran.
+    Returns the findings, the set of domains actually *applicable* (relevant
+    files present), the names of the tools that ran, and a {tool: raw_output}
+    map (only tools that expose a safe raw report; gitleaks is omitted).
     """
     findings: list[Finding] = []
     applicable: set[Domain] = set()
     tools: list[str] = []
+    raws: dict[str, str] = {}
 
     for runner_cls in ALL_RUNNERS:
         runner = runner_cls()
@@ -119,8 +121,10 @@ def _run_scanners(target: Path) -> tuple[list[Finding], set[Domain], list[str]]:
         findings.extend(result.findings)
         tools.append(runner.name)
         applicable.update(result.applicable_domains)
+        if result.raw is not None:
+            raws[runner.name] = result.raw
 
-    return findings, applicable, tools
+    return findings, applicable, tools, raws
 
 
 def _print_summary(report: Report) -> None:
@@ -197,7 +201,7 @@ def main(argv: list[str] | None = None) -> int:
 
     output_dir = Path(args.output_dir or config.output_dir).expanduser().resolve()
 
-    findings, applicable, tools = _run_scanners(target)
+    findings, applicable, tools, raws = _run_scanners(target)
     if not tools:
         console.print(
             "[red]error:[/red] no scanner available. Install at least one of: "
@@ -224,6 +228,7 @@ def main(argv: list[str] | None = None) -> int:
         score=result,
         tools=tools,
         duplicates_removed=merged.duplicates_removed,
+        raw_tools=sorted(raws),
     )
 
     try:
@@ -234,6 +239,11 @@ def main(argv: list[str] | None = None) -> int:
     for fmt in formats:
         render, filename = REPORTERS[fmt]
         (output_dir / filename).write_text(render(report), encoding="utf-8")
+    if raws:
+        raw_dir = output_dir / "raw"
+        raw_dir.mkdir(exist_ok=True)
+        for tool, content in raws.items():
+            (raw_dir / f"{tool}.json").write_text(content, encoding="utf-8")
     console.print(f"[dim]reports written to {output_dir}[/dim]")
 
     _print_summary(report)

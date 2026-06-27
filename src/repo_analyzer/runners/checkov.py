@@ -42,7 +42,7 @@ class CheckovRunner(Runner):
             if isinstance(r, dict)
             and ((r.get("results") or {}).get("passed_checks") or (r.get("results") or {}).get("failed_checks"))
         }
-        return RunnerResult(self._parse(data), frozenset(applicable))
+        return RunnerResult(self._parse(data), frozenset(applicable), raw=stdout)
 
     def _parse(self, data: object) -> list[Finding]:
         # checkov emits a single object for one framework, a list for several.

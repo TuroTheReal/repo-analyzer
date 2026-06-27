@@ -46,7 +46,7 @@ class ZizmorRunner(Runner):
             data = json.loads(stdout) if stdout.strip() else []
         except json.JSONDecodeError as exc:
             raise RunnerError(f"zizmor returned invalid JSON: {exc}") from exc
-        return RunnerResult(self._parse(data, root), frozenset({Domain.PIPELINE}))
+        return RunnerResult(self._parse(data, root), frozenset({Domain.PIPELINE}), raw=stdout)
 
     def _parse(self, data: list, root: Path | None = None) -> list[Finding]:
         findings: list[Finding] = []
