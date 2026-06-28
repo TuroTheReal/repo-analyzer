@@ -95,11 +95,35 @@ output:
   dir: repo-analyzer-report
 ```
 
+## Use it in another repo (GitHub Action)
+
+Add one step to any workflow:
+
+```yaml
+- uses: actions/checkout@v4
+- uses: TuroTheReal/repo-analyzer@v1
+  with:
+    fail-on: critical,high   # optional
+```
+
+Inputs (all optional):
+
+| Input | Default | Description |
+|---|---|---|
+| `target` | `.` | path to scan |
+| `fail-on` | config, else `critical,high` | severities that fail the gate |
+| `format` | config | report formats (sarif,markdown,html,json) |
+| `output-dir` | `repo-analyzer-report` | where reports are written |
+| `config` | `<target>/.repo-analyzer.yml` | config file |
+| `no-gate` | `false` | scan + report without failing CI |
+
+Pin to `@v1` for non-breaking updates, or to a full commit SHA for maximum supply-chain safety.
+
 ## Roadmap
 
 - [x] **M1**: Trivy IaC + core model + scoring + reporters + gate
 - [x] **M2**: Checkov, gitleaks, grype, hadolint + `skip_dirs` + dark HTML dashboard (SVG charts, severity filter)
-- [ ] **M3**: packaged GitHub Action + self-scan (dogfood)
+- [x] **M3**: packaged GitHub Action + self-scan (dogfood) — `uses: TuroTheReal/repo-analyzer@v1`
 - [x] **M4**: pipeline audit (zizmor + actionlint) — Pipeline domain, self-scan hardens its own workflow (SHA-pinned actions)
 - [ ] **M5**: GitHub Pages demo dashboard
 - [ ] later: OpenSSF Scorecard (supply-chain posture)
