@@ -18,8 +18,9 @@ _TIMEOUT_SECONDS = 300
 
 # Dependency manifests whose presence means the dependencies domain is assessable.
 _MANIFESTS = (
-    "requirements.txt", "poetry.lock", "Pipfile.lock", "package.json", "package-lock.json",
-    "yarn.lock", "pnpm-lock.yaml", "go.mod", "go.sum", "Gemfile.lock", "Cargo.lock",
+    "requirements.txt", "pyproject.toml", "uv.lock", "poetry.lock", "Pipfile.lock",
+    "package.json", "package-lock.json", "yarn.lock", "pnpm-lock.yaml",
+    "go.mod", "go.sum", "Gemfile.lock", "Cargo.lock",
     "pom.xml", "build.gradle", "composer.lock",
 )
 

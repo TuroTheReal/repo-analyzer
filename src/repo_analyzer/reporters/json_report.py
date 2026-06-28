@@ -45,6 +45,15 @@ def render(report: Report) -> str:
                 {"domain": d.domain.value, "score": d.score, "findings": d.findings}
                 for d in score.domains
             ],
+            "supply_chain": (
+                {
+                    "domain": score.supply_chain.domain.value,
+                    "score": score.supply_chain.score,
+                    "findings": score.supply_chain.findings,
+                }
+                if score.supply_chain is not None
+                else None
+            ),
         },
         "duplicates_removed": report.duplicates_removed,
         "findings": [_finding_to_dict(f) for f in report.findings],

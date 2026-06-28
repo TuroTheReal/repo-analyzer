@@ -1,9 +1,11 @@
 """Merge and deduplicate findings coming from several scanners.
 
-Different tools frequently flag the same problem (e.g. Trivy and Checkov both
-report an unencrypted S3 bucket). We keep a single finding per
-:attr:`Finding.dedup_key`, retaining the highest-severity variant so a tool
-that classifies the issue more seriously wins.
+Deduplication is by exact :attr:`Finding.dedup_key` (rule + file + line +
+resource), keeping the highest-severity variant. This collapses a finding that a
+single tool reports more than once. It does NOT merge the *same* issue flagged by
+*different* tools: each tool uses its own rule IDs (Trivy ``AVD-``, Checkov
+``CKV_``), so their keys never collide. True cross-tool semantic dedup would need
+a rule-to-rule mapping, which this project deliberately does not attempt.
 """
 
 from __future__ import annotations
