@@ -31,8 +31,8 @@ def test_clean_scan_is_perfect_and_passes():
 
 def test_single_critical_penalizes_and_fails_gate():
     result = scorer.score([_finding(Severity.CRITICAL)], {Domain.IAC}, CRIT_AND_HIGH)
-    assert result.total == 85  # 100 - 15, single scanned domain weighted at 1.0
-    assert result.grade == "A-"
+    assert result.total == 85  # 100 - 15, posture kept for the breakdown
+    assert result.grade == "F"  # gate failed -> headline floored to F (never better than the gate)
     assert result.passed is False
 
 
@@ -42,12 +42,20 @@ def test_high_does_not_fail_gate_when_fail_on_is_critical_only():
 
 
 def test_grade_is_worst_assessed_domain():
-    # Critical in IaC (-> 85), SECRETS assessed but clean (100). Grade = worst = 85.
+    # Critical in IaC (-> 85), SECRETS assessed but clean (100). Worst domain = 85.
     findings = [_finding(Severity.CRITICAL, domain=Domain.IAC)]
     result = scorer.score(findings, {Domain.IAC, Domain.SECRETS}, CRIT_AND_HIGH)
-    assert result.total == 85
-    assert result.grade == "A-"
+    assert result.total == 85  # worst-domain posture
+    assert result.grade == "F"  # but the gate failed, so the headline is F
     assert {d.domain for d in result.domains} == {Domain.IAC, Domain.SECRETS}
+
+
+def test_grade_never_reads_better_than_a_failed_gate():
+    # One HIGH -> posture 92, but it trips the gate -> headline must be F, not A.
+    result = scorer.score([_finding(Severity.HIGH)], {Domain.IAC}, CRIT_AND_HIGH)
+    assert result.total == 92
+    assert result.passed is False
+    assert result.grade == "F"
 
 
 def test_severity_counts_are_reported():
