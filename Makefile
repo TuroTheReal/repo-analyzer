@@ -9,7 +9,7 @@ VENV := .venv
 BIN := $(VENV)/bin
 PYTHON ?= $(shell ls /opt/homebrew/bin/python3.1[0-9] 2>/dev/null | sort -V | tail -1 || command -v python3)
 
-.PHONY: install install-uv test scan self clean
+.PHONY: install install-uv test scan self hooks clean
 
 install:  ## Create the venv and install the package + dev deps
 	$(PYTHON) -m venv $(VENV)
@@ -28,6 +28,11 @@ scan:  ## Scan a path: make scan TARGET=/path/to/repo
 
 self:  ## Scan this repository (dogfood)
 	$(BIN)/repo-analyzer .
+
+hooks:  ## Install the git pre-push hook (tests + gate before every push)
+	cp hooks/pre-push .git/hooks/pre-push
+	chmod +x .git/hooks/pre-push
+	@echo "pre-push hook installed (bypass once with: git push --no-verify)"
 
 clean:  ## Remove venv, caches and generated reports
 	rm -rf $(VENV) repo-analyzer-report .pytest_cache *.egg-info src/*.egg-info

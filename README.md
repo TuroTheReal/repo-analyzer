@@ -71,7 +71,17 @@ Exit codes: `0` gate passed, `1` gate failed, `2` usage/environment error.
 ```bash
 make self           # scan this repo (dogfood)
 make test           # run the test suite
+make hooks          # install the pre-push gate (runs tests + scan before each push)
 ```
+
+### Where the reports go
+
+- **Locally**: written to `./repo-analyzer-report/` (or `--output-dir`). Open `report.html`.
+- **In CI**: the runner is ephemeral, so the workflow surfaces results three ways:
+  - SARIF → the repo's **Security** tab + inline PR annotations,
+  - the **full bundle** (html/md/json + `raw/`) → downloadable **artifact** on the run page,
+  - on pull requests, the markdown summary is posted as a **PR comment** (sticky, updated each run).
+- **Raw scanner output** lands in `repo-analyzer-report/raw/<tool>.json` and is linked from the HTML. gitleaks is excluded on purpose: its raw report would expose the matched secret.
 
 ## Configuration
 

@@ -32,6 +32,7 @@ jobs:
     permissions:
       contents: read
       security-events: write  # required to upload SARIF to code scanning
+      pull-requests: write    # required to post the report as a PR comment
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
         with:
@@ -81,3 +82,11 @@ jobs:
         with:
           name: repo-analyzer-report
           path: repo-analyzer-report/
+
+      - name: Comment the report on the PR
+        if: always() && github.event_name == 'pull_request'  # post even when the gate fails
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ github.event.pull_request.number }}
+        # --edit-last + --create-if-none keep a single sticky comment instead of spamming each push
+        run: gh pr comment "$PR" --body-file repo-analyzer-report/report.md --edit-last --create-if-none
