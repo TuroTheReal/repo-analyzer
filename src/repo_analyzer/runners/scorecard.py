@@ -47,11 +47,17 @@ class ScorecardRunner(Runner):
             ["scorecard", f"--repo={repo}", "--format=json"],
             cwd=root,
             timeout=_TIMEOUT_SECONDS,
+            # Exit 1 means a check could not execute with the available token (e.g.
+            # Branch-Protection needs a fine-grained PAT). Scorecard still emits the
+            # partial JSON on stdout, so we accept it and skip the unscored checks.
+            ok_codes=(0, 1),
         )
         try:
             data = json.loads(stdout) if stdout.strip() else {}
         except json.JSONDecodeError as exc:
             raise RunnerError(f"scorecard returned invalid JSON: {exc}") from exc
+        if not data.get("checks"):
+            return RunnerResult([], frozenset())  # no usable results -> not assessed
         return RunnerResult(self._parse(data), frozenset({Domain.SUPPLY_CHAIN}), raw=stdout)
 
     def _github_repo(self, root: Path) -> str | None:
