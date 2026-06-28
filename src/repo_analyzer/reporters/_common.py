@@ -146,9 +146,24 @@ def build_context(report: Report) -> dict:
             "findings": d.findings,
             "color": grade_color(_grade_letter(d.score)),
         }
-        # Most critical first: lowest score leads, name as tiebreak.
+        # Most critical first: lowest score leads, name as tiebreak. Supply chain
+        # is advisory (its own header badge + tab), not an App & Infra tile.
         for d in sorted(score.domains, key=lambda x: (x.score, x.domain.value))
+        if d.domain is not Domain.SUPPLY_CHAIN
     ]
+
+    # Supply-chain posture (OpenSSF Scorecard): advisory, shown as a header badge
+    # with its own grade, kept out of the headline score (see scorer).
+    sc = score.supply_chain
+    supply_chain = None
+    if sc is not None:
+        sc_letter = _grade_letter(sc.score)
+        supply_chain = {
+            "score": sc.score,
+            "grade": sc_letter,
+            "color": grade_color(sc_letter),
+            "findings": sc.findings,
+        }
 
     groups = []
     for sev in SEVERITY_ORDER:
@@ -197,6 +212,7 @@ def build_context(report: Report) -> dict:
         "grade": score.grade,
         "grade_color": grade_color(score.grade),
         "grade_caption": grade_caption(score.grade),
+        "supply_chain": supply_chain,
         "passed": score.passed,
         "gate_status": "PASSED" if score.passed else "FAILED",
         "fail_on": ", ".join(sorted(s.value for s in score.fail_on)),

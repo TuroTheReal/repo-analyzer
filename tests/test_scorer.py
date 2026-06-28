@@ -88,3 +88,24 @@ def test_no_scanned_domains_is_perfect_and_passes():
     result = scorer.score([], set(), CRIT_AND_HIGH)
     assert result.total == 100
     assert result.passed is True
+
+
+def test_supply_chain_is_advisory_excluded_from_headline_grade():
+    # A weak supply-chain posture must NOT drag the headline grade.
+    findings = [
+        _finding(Severity.MEDIUM, domain=Domain.SUPPLY_CHAIN, line=1),
+        _finding(Severity.MEDIUM, domain=Domain.SUPPLY_CHAIN, line=2),
+        _finding(Severity.MEDIUM, domain=Domain.SUPPLY_CHAIN, line=3),
+    ]
+    result = scorer.score(findings, {Domain.IAC, Domain.SUPPLY_CHAIN}, CRIT_AND_HIGH)
+    assert result.total == 100  # IaC clean drives the headline, supply chain ignored
+    assert result.grade == "A+"
+    assert result.supply_chain is not None
+    assert result.supply_chain.domain is Domain.SUPPLY_CHAIN
+    assert result.supply_chain.score == 88  # 100 - 3 * MEDIUM(4)
+    assert result.passed is True  # capped MEDIUM never trips the critical/high gate
+
+
+def test_supply_chain_is_none_when_not_assessed():
+    result = scorer.score([_finding(Severity.CRITICAL)], {Domain.IAC}, CRIT_AND_HIGH)
+    assert result.supply_chain is None

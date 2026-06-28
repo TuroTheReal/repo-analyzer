@@ -26,6 +26,10 @@ _TEMPLATE = _ENV.from_string(
 **Grade: {{ grade }} ({{ total }}/100)** · {{ grade_caption }}. Gate **{{ gate_status }}** (fails on: {{ fail_on }})
 
 > A = strong, F = critical. The grade is the worst assessed domain.
+{% if supply_chain %}
+
+**Supply chain: {{ supply_chain.grade }} ({{ supply_chain.score }}/100)** · OpenSSF Scorecard posture (advisory, excluded from the grade)
+{% endif %}
 
 - Scanned: `{{ target }}`
 - Generated: {{ generated_at }}

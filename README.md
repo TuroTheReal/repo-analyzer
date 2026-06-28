@@ -128,7 +128,7 @@ Pin to `@v1` for non-breaking updates, or to a full commit SHA for maximum suppl
 - [x] **M3**: packaged GitHub Action + self-scan (dogfood) — `uses: TuroTheReal/repo-analyzer@v1`
 - [x] **M4**: pipeline audit (zizmor + actionlint) — Pipeline domain, self-scan hardens its own workflow (SHA-pinned actions)
 - [x] **M5**: GitHub Pages demo dashboard — deployed from CI on each push to `main` ([live](https://turothereal.github.io/repo-analyzer/))
-- [ ] later: OpenSSF Scorecard (supply-chain posture)
+- [x] **Supply chain**: OpenSSF Scorecard posture (own header badge, advisory — capped at Medium, excluded from the headline grade). CI-only: analyzes the remote GitHub repo via the API.
 
 ## Known limitations
 
