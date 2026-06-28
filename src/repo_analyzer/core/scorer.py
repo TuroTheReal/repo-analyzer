@@ -108,10 +108,14 @@ def score(
     counts = {sev: 0 for sev in Severity}
     counts.update(Counter(f.severity for f in findings))
     passed = not any(f.severity in fail_on for f in findings)
+    # The headline grade must never read better than the gate: a gate-failing
+    # finding caps the letter at F, so a misleading "A- but FAILED" cannot happen.
+    # The numeric `total` keeps the posture score for the per-domain breakdown.
+    grade = _grade(total) if passed else "F"
 
     return ScoreResult(
         total=total,
-        grade=_grade(total),
+        grade=grade,
         passed=passed,
         domains=domain_scores,
         counts=counts,

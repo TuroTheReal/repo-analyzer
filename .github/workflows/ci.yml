@@ -68,6 +68,18 @@ jobs:
           curl -sSfL "https://github.com/ossf/scorecard/releases/download/v${SCORECARD_VERSION}/scorecard_${SCORECARD_VERSION}_linux_amd64.tar.gz" | tar -xz -C /tmp scorecard
           sudo install /tmp/scorecard /usr/local/bin/scorecard
 
+      - name: Verify all scanners are installed (fail closed)
+        # A missing scanner would silently drop its domain and could turn a failing repo green.
+        run: |
+          missing=()
+          for b in trivy checkov gitleaks grype hadolint zizmor actionlint scorecard; do
+            command -v "$b" >/dev/null 2>&1 || missing+=("$b")
+          done
+          if [ ${#missing[@]} -ne 0 ]; then
+            echo "::error::scanners missing after install: ${missing[*]}"
+            exit 1
+          fi
+
       - name: Install repo-analyzer
         run: pip install -e .
 

@@ -58,6 +58,25 @@ runs:
         ACTIONLINT_VERSION=1.7.7
         curl -sSfL "https://github.com/rhysd/actionlint/releases/download/v${ACTIONLINT_VERSION}/actionlint_${ACTIONLINT_VERSION}_linux_amd64.tar.gz" | tar -xz -C /tmp actionlint
         sudo install /tmp/actionlint /usr/local/bin/actionlint
+        # OpenSSF Scorecard (supply-chain posture, pinned release binary)
+        SCORECARD_VERSION=5.5.0
+        curl -sSfL "https://github.com/ossf/scorecard/releases/download/v${SCORECARD_VERSION}/scorecard_${SCORECARD_VERSION}_linux_amd64.tar.gz" | tar -xz -C /tmp scorecard
+        sudo install /tmp/scorecard /usr/local/bin/scorecard
+
+    - name: Verify all scanners are installed (fail closed)
+      shell: bash
+      # A security gate must never pass silently because a scanner failed to
+      # install: a missing binary would drop its domain and could turn a failing
+      # repo green. Hard-fail here instead.
+      run: |
+        missing=()
+        for b in trivy checkov gitleaks grype hadolint zizmor actionlint scorecard; do
+          command -v "$b" >/dev/null 2>&1 || missing+=("$b")
+        done
+        if [ ${#missing[@]} -ne 0 ]; then
+          echo "::error::scanners missing after install: ${missing[*]}"
+          exit 1
+        fi
 
     - name: Install repo-analyzer
       shell: bash
@@ -72,6 +91,7 @@ runs:
         OUTPUT_DIR: ${{ inputs.output-dir }}
         CONFIG: ${{ inputs.config }}
         NO_GATE: ${{ inputs.no-gate }}
+        GITHUB_AUTH_TOKEN: ${{ github.token }}  # lets OpenSSF Scorecard query the consumer's repo posture
       # Inputs are passed via env (never interpolated into the script) to avoid expression injection.
       run: |
         set -euo pipefail
