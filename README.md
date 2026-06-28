@@ -4,6 +4,12 @@ A thin **DevSecOps gate**. It orchestrates best-in-class security scanners,
 merges their output into one scored report, and turns the result into a CI gate
 via its exit code.
 
+**Scope:** infrastructure-as-code, dependencies, secrets, containers, CI pipelines
+and supply-chain posture. It does **not** perform application-code SAST (source
+vulnerability analysis like Semgrep/CodeQL): a passing gate means the *configuration
+and supply chain* are clean, not that the application code is. Pair it with a SAST
+tool for full coverage.
+
 **Live demo dashboard:** https://turothereal.github.io/repo-analyzer/ (auto-regenerated on each push to `main`, scanning a deliberately-vulnerable fixture).
 
 > **Status: rebuild in progress.** The tool was rewritten from a custom scanner
