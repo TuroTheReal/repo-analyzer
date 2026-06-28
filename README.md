@@ -73,6 +73,18 @@ make self           # scan this repo (dogfood)
 make test           # run the test suite
 ```
 
+## Configuration
+
+Optional `.repo-analyzer.yml` at the scanned repo root:
+
+```yaml
+gate:
+  fail_on: [critical, high]
+output:
+  formats: [sarif, markdown, html, json]
+  dir: repo-analyzer-report
+```
+
 ## Use it in another repo (GitHub Action)
 
 Add one step to any workflow:
@@ -97,23 +109,11 @@ Inputs (all optional):
 
 Pin to `@v1` for non-breaking updates, or to a full commit SHA for maximum supply-chain safety.
 
-## Configuration
-
-Optional `.repo-analyzer.yml` at the scanned repo root:
-
-```yaml
-gate:
-  fail_on: [critical, high]
-output:
-  formats: [sarif, markdown, html, json]
-  dir: repo-analyzer-report
-```
-
 ## Roadmap
 
 - [x] **M1**: Trivy IaC + core model + scoring + reporters + gate
 - [x] **M2**: Checkov, gitleaks, grype, hadolint + `skip_dirs` + dark HTML dashboard (SVG charts, severity filter)
-- [ ] **M3**: packaged GitHub Action + self-scan (dogfood)
+- [x] **M3**: packaged GitHub Action + self-scan (dogfood) — `uses: TuroTheReal/repo-analyzer@v1`
 - [x] **M4**: pipeline audit (zizmor + actionlint) — Pipeline domain, self-scan hardens its own workflow (SHA-pinned actions)
 - [ ] **M5**: GitHub Pages demo dashboard
 - [ ] later: OpenSSF Scorecard (supply-chain posture)
