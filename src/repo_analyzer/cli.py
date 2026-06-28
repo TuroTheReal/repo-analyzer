@@ -209,14 +209,12 @@ def main(argv: list[str] | None = None) -> int:
         )
         return EXIT_ENV_ERROR
 
-    pre_skip_domains = {f.domain for f in findings}
+    # skip_dirs excludes configured paths (vendored deps, fixtures) from BOTH the
+    # findings and the grade. A domain a runner actually assessed stays assessed on
+    # the remaining files (clean = 100 if all its findings were skipped): we trust
+    # the runner's applicability instead of dropping a genuinely-scanned domain to
+    # "not assessed", which would hide that, say, secrets were scanned and clean.
     findings = [f for f in findings if not _is_skipped(f.file, config.skip_dirs)]
-    post_skip_domains = {f.domain for f in findings}
-    # A domain whose every finding was skipped (its files live only under
-    # skip_dirs) is not genuinely assessed: drop it so it is not scored 100 and
-    # used as a misleading worst-domain. Domains that were clean to begin with
-    # (no findings at all) stay assessed.
-    applicable = {d for d in applicable if d not in pre_skip_domains or d in post_skip_domains}
     merged = merger.merge(findings)
     result = scorer.score(merged.findings, applicable, fail_on)
 
