@@ -143,17 +143,19 @@ def test_findings_in_skipped_dirs_are_filtered(monkeypatch, tmp_path):
     assert code == cli.EXIT_OK  # the only finding is under a default skip dir
 
 
-def test_domain_assessed_only_via_skipped_paths_is_dropped_from_grade(monkeypatch, tmp_path):
-    # IaC's only finding is under a skip dir: IaC must not be scored 100, it should
-    # drop out of the grade entirely (not a misleading perfect worst-domain).
+def test_domain_with_only_skipped_findings_is_assessed_clean(monkeypatch, tmp_path):
+    # IaC's only finding is under a skip dir: skip_dirs excludes it from the grade,
+    # but the domain stays assessed (clean = 100) since the runner did scan it —
+    # it is not misleadingly dropped to "not assessed".
     crit = Finding(
         rule_id="R", title="t", severity=Sev.CRITICAL, domain=Domain.IAC,
         tool="fake", file="node_modules/pkg/x.tf", line=1,
     )
     code, out = _run(monkeypatch, tmp_path, [crit], extra=["--format", "json"])
     payload = json.loads((out / "report.json").read_text(encoding="utf-8"))
-    assert code == cli.EXIT_OK
-    assert all(d["domain"] != "iac" for d in payload["score"]["domains"])
+    assert code == cli.EXIT_OK  # the skipped critical does not fail the gate
+    iac = [d for d in payload["score"]["domains"] if d["domain"] == "iac"]
+    assert iac and iac[0]["score"] == 100 and iac[0]["findings"] == 0
 
 
 def test_raw_report_written_when_provided(monkeypatch, tmp_path):
