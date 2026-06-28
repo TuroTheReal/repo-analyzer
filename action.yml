@@ -1,0 +1,83 @@
+name: "repo-analyzer"
+description: "Thin DevSecOps gate: runs Trivy, Checkov, gitleaks, grype, hadolint, zizmor and actionlint, scores the result, and fails CI on findings."
+branding:
+  icon: "shield"
+  color: "purple"
+
+inputs:
+  target:
+    description: "Path to scan."
+    required: false
+    default: "."
+  fail-on:
+    description: "Comma-separated severities that fail the gate (e.g. critical,high). Defaults to the config or critical,high."
+    required: false
+    default: ""
+  format:
+    description: "Comma-separated report formats among sarif,markdown,html,json."
+    required: false
+    default: ""
+  output-dir:
+    description: "Directory for the generated reports."
+    required: false
+    default: "repo-analyzer-report"
+  config:
+    description: "Path to a .repo-analyzer.yml (defaults to <target>/.repo-analyzer.yml)."
+    required: false
+    default: ""
+  no-gate:
+    description: "Set to 'true' to scan and report without ever failing the job."
+    required: false
+    default: "false"
+
+runs:
+  using: "composite"
+  steps:
+    - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1  # v6.3.0
+      with:
+        python-version: "3.12"
+
+    - name: Install scanners
+      shell: bash
+      run: |
+        set -euxo pipefail
+        # Trivy (official install script)
+        curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sh -s -- -b /usr/local/bin
+        # grype (official Anchore install script)
+        curl -sSfL https://raw.githubusercontent.com/anchore/grype/main/install.sh | sh -s -- -b /usr/local/bin
+        # gitleaks (pinned release binary)
+        GITLEAKS_VERSION=8.21.2
+        curl -sSfL "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz" | tar -xz -C /tmp gitleaks
+        sudo install /tmp/gitleaks /usr/local/bin/gitleaks
+        # hadolint (latest release binary)
+        sudo curl -sSfL https://github.com/hadolint/hadolint/releases/latest/download/hadolint-Linux-x86_64 -o /usr/local/bin/hadolint
+        sudo chmod +x /usr/local/bin/hadolint
+        # checkov + zizmor (PyPI)
+        pip install checkov zizmor
+        # actionlint (pinned release binary)
+        ACTIONLINT_VERSION=1.7.7
+        curl -sSfL "https://github.com/rhysd/actionlint/releases/download/v${ACTIONLINT_VERSION}/actionlint_${ACTIONLINT_VERSION}_linux_amd64.tar.gz" | tar -xz -C /tmp actionlint
+        sudo install /tmp/actionlint /usr/local/bin/actionlint
+
+    - name: Install repo-analyzer
+      shell: bash
+      run: pip install "$GITHUB_ACTION_PATH"
+
+    - name: Run repo-analyzer
+      shell: bash
+      env:
+        TARGET: ${{ inputs.target }}
+        FAIL_ON: ${{ inputs.fail-on }}
+        FORMAT: ${{ inputs.format }}
+        OUTPUT_DIR: ${{ inputs.output-dir }}
+        CONFIG: ${{ inputs.config }}
+        NO_GATE: ${{ inputs.no-gate }}
+      # Inputs are passed via env (never interpolated into the script) to avoid expression injection.
+      run: |
+        set -euo pipefail
+        args=("$TARGET" --output-dir "$OUTPUT_DIR")
+        if [ -n "$FAIL_ON" ]; then args+=(--fail-on "$FAIL_ON"); fi
+        if [ -n "$FORMAT" ]; then args+=(--format "$FORMAT"); fi
+        if [ -n "$CONFIG" ]; then args+=(--config "$CONFIG"); fi
+        if [ "$NO_GATE" = "true" ]; then args+=(--no-gate); fi
+        repo-analyzer "${args[@]}"

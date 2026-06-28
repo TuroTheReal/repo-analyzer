@@ -1,0 +1,29 @@
+name: action-selftest
+
+# Proves the composite action runs end-to-end (install scanners + run repo-analyzer)
+# by invoking it on the vulnerable demo fixture with the gate disabled.
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  selftest:
+    name: composite action self-test
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
+        with:
+          persist-credentials: false
+      - name: Run the action against the demo fixture
+        uses: ./
+        with:
+          target: tests/fixtures/demo-app
+          no-gate: "true"
+          output-dir: selftest-report
+      - name: Assert a report was produced
+        run: test -f selftest-report/report.html

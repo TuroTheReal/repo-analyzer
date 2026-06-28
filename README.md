@@ -73,6 +73,30 @@ make self           # scan this repo (dogfood)
 make test           # run the test suite
 ```
 
+## Use it in another repo (GitHub Action)
+
+Add one step to any workflow:
+
+```yaml
+- uses: actions/checkout@v4
+- uses: TuroTheReal/repo-analyzer@v1
+  with:
+    fail-on: critical,high   # optional
+```
+
+Inputs (all optional):
+
+| Input | Default | Description |
+|---|---|---|
+| `target` | `.` | path to scan |
+| `fail-on` | config, else `critical,high` | severities that fail the gate |
+| `format` | config | report formats (sarif,markdown,html,json) |
+| `output-dir` | `repo-analyzer-report` | where reports are written |
+| `config` | `<target>/.repo-analyzer.yml` | config file |
+| `no-gate` | `false` | scan + report without failing CI |
+
+Pin to `@v1` for non-breaking updates, or to a full commit SHA for maximum supply-chain safety.
+
 ## Configuration
 
 Optional `.repo-analyzer.yml` at the scanned repo root:
