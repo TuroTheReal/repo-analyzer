@@ -4,6 +4,8 @@ A thin **DevSecOps gate**. It orchestrates best-in-class security scanners,
 merges their output into one scored report, and turns the result into a CI gate
 via its exit code.
 
+**Live demo dashboard:** https://turothereal.github.io/repo-analyzer/ (auto-regenerated on each push to `main`, scanning a deliberately-vulnerable fixture).
+
 > **Status: rebuild in progress.** The tool was rewritten from a custom scanner
 > into a thin orchestrator. Milestone 1 (below) is functional; the rest is on
 > the roadmap. This README only documents what actually works today.
@@ -101,7 +103,7 @@ output:
 - [x] **M2**: Checkov, gitleaks, grype, hadolint + `skip_dirs` + dark HTML dashboard (SVG charts, severity filter)
 - [ ] **M3**: packaged GitHub Action + self-scan (dogfood)
 - [x] **M4**: pipeline audit (zizmor + actionlint) — Pipeline domain, self-scan hardens its own workflow (SHA-pinned actions)
-- [ ] **M5**: GitHub Pages demo dashboard
+- [x] **M5**: GitHub Pages demo dashboard — deployed from CI on each push to `main` ([live](https://turothereal.github.io/repo-analyzer/))
 - [ ] later: OpenSSF Scorecard (supply-chain posture)
 
 ## Known limitations
