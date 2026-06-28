@@ -1,0 +1,27 @@
+#!/usr/bin/env bash
+# repo-analyzer pre-push hook: shift-left the CI gate.
+#
+# Runs the test suite + the security gate locally before every push. A non-zero
+# exit aborts the push, so you never push something CI would reject. The HTML
+# report is written to repo-analyzer-report/ so you can inspect failures locally
+# instead of digging through GitHub.
+#
+# Install with:  make hooks
+# Bypass once:   git push --no-verify
+set -euo pipefail
+
+ROOT="$(git rev-parse --show-toplevel)"
+BIN="$ROOT/.venv/bin"
+
+if [ ! -x "$BIN/repo-analyzer" ]; then
+  echo "[pre-push] .venv not found, run 'make install' first" >&2
+  exit 1
+fi
+
+echo "[pre-push] running tests..."
+"$BIN/pytest" -q
+
+echo "[pre-push] running security gate (this can take ~1-2 min: scanners + DBs)..."
+"$BIN/repo-analyzer" "$ROOT" --output-dir "$ROOT/repo-analyzer-report"
+
+echo "[pre-push] OK. Report: repo-analyzer-report/report.html"
