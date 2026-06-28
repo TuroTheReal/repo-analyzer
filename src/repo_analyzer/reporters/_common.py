@@ -76,7 +76,7 @@ def grade_color(grade: str) -> str:
     if grade.startswith("A"):
         return "#2fdca5"  # metallic mint
     if grade.startswith("B"):
-        return "#9bd64a"  # lime
+        return "#8fdf6e"  # fresh green
     if grade.startswith("C"):
         return "#ffe23d"  # bright yellow
     if grade.startswith("D"):
