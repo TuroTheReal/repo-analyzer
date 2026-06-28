@@ -82,6 +82,9 @@ _TEMPLATE = _ENV.from_string(
   .gate { font-size: 12px; font-weight: 600; padding: 6px 13px; border-radius: 999px; border: 1px solid var(--border-2); }
   .gate.pass { color: #2fdca5; background: rgba(47,220,165,.12); border-color: rgba(47,220,165,.35); }
   .gate.fail { color: #fb2e6b; background: rgba(251,46,107,.12); border-color: rgba(251,46,107,.35); }
+  .badges { display: flex; align-items: center; gap: 9px; }
+  .scbadge { font-size: 12px; font-weight: 600; padding: 6px 13px; border-radius: 999px;
+             border: 1px solid var(--border-2); background: var(--card); }
 
   .hero { display: grid; grid-template-columns: auto 1fr auto; gap: 28px; align-items: center;
           background: linear-gradient(180deg, var(--card-2), var(--hero)); border: 1px solid var(--border);
@@ -179,7 +182,10 @@ _TEMPLATE = _ENV.from_string(
 <main class="wrap">
   <div class="topbar">
     <div class="brand"><span class="dot"></span> repo-analyzer</div>
-    <div class="gate {{ 'pass' if passed else 'fail' }}">Gate {{ gate_status }}</div>
+    <div class="badges">
+      {% if supply_chain %}<div class="scbadge" style="border-color: {{ supply_chain.color }}; color: {{ supply_chain.color }}" title="OpenSSF Scorecard posture (advisory, excluded from the grade)">Supply chain {{ supply_chain.grade }} · {{ supply_chain.score }}/100</div>{% endif %}
+      <div class="gate {{ 'pass' if passed else 'fail' }}">Gate {{ gate_status }}</div>
+    </div>
   </div>
 
   <div class="hero">
@@ -230,7 +236,7 @@ _TEMPLATE = _ENV.from_string(
   <div class="tabs">
     <div class="tab active" data-tab="project">App &amp; Infra<span class="n">{{ project_cards | length }}</span></div>
     <div class="tab" data-tab="ci">CI/CD<span class="n">{{ ci_cards | length }}</span></div>
-    <div class="tab" data-tab="repo">Repo<span class="n">roadmap</span></div>
+    <div class="tab" data-tab="repo">Supply chain<span class="n">{{ (repo_cards | length) if supply_chain else 'n/a' }}</span></div>
   </div>
 
   <section data-panel="project">
@@ -283,7 +289,7 @@ _TEMPLATE = _ENV.from_string(
     {% if repo_cards %}
     <div style="margin-top: 18px">{% for f in repo_cards %}{{ card(f) }}{% endfor %}</div>
     {% else %}
-    <div class="empty"><div class="big">Repository posture</div>Repo governance &amp; supply-chain hygiene: branch protection, signed releases, pinned dependencies, security policy. Roadmap: OpenSSF Scorecard.</div>
+    <div class="empty"><div class="big">Supply-chain posture</div>OpenSSF Scorecard scores the repo's governance &amp; supply chain (branch protection, signed releases, pinned dependencies, token permissions...). It inspects the remote GitHub repo, so it runs in CI on a GitHub repository and is not assessed for a local folder scan. Advisory: shown as a header badge, excluded from the grade.</div>
     {% endif %}
   </section>
 

@@ -6,6 +6,7 @@ from .checkov import CheckovRunner
 from .gitleaks import GitleaksRunner
 from .grype import GrypeRunner
 from .hadolint import HadolintRunner
+from .scorecard import ScorecardRunner
 from .trivy import TrivyConfigRunner
 from .zizmor import ZizmorRunner
 
@@ -19,6 +20,7 @@ ALL_RUNNERS: tuple[type[Runner], ...] = (
     HadolintRunner,
     ZizmorRunner,
     ActionlintRunner,
+    ScorecardRunner,
 )
 
 __all__ = [
@@ -32,5 +34,6 @@ __all__ = [
     "HadolintRunner",
     "ZizmorRunner",
     "ActionlintRunner",
+    "ScorecardRunner",
     "ALL_RUNNERS",
 ]

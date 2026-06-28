@@ -47,6 +47,10 @@ class ScoreResult:
     domains: list[DomainScore]
     counts: dict[Severity, int]
     fail_on: frozenset[Severity]
+    #: Supply-chain posture (OpenSSF Scorecard), advisory: its own score, kept
+    #: OUT of the headline grade so repo governance never drags the code/infra
+    #: verdict. ``None`` when the supply-chain domain was not assessed.
+    supply_chain: DomainScore | None = None
 
 
 def _grade(score: int) -> str:
@@ -95,7 +99,11 @@ def score(
     ]
 
     # Worst assessed domain drives the grade; perfect when nothing was assessed.
-    total = min((d.score for d in domain_scores), default=100)
+    # Supply chain (OpenSSF Scorecard) is advisory posture, excluded from the
+    # headline so governance gaps never cap the code/infra verdict.
+    gradeable = [d for d in domain_scores if d.domain is not Domain.SUPPLY_CHAIN]
+    total = min((d.score for d in gradeable), default=100)
+    supply_chain = next((d for d in domain_scores if d.domain is Domain.SUPPLY_CHAIN), None)
 
     counts = {sev: 0 for sev in Severity}
     counts.update(Counter(f.severity for f in findings))
@@ -108,4 +116,5 @@ def score(
         domains=domain_scores,
         counts=counts,
         fail_on=fail_on,
+        supply_chain=supply_chain,
     )
