@@ -164,7 +164,7 @@ _TEMPLATE = _ENV.from_string(
   .rawbox-desc { font-size: 12px; color: var(--faint); margin-top: 3px; max-width: 560px; }
   .rawbox-links { display: flex; gap: 8px; flex-wrap: wrap; }
   .rawlink { font-size: 11.5px; color: var(--muted); border: 1px solid var(--border-2); background: var(--card);
-             padding: 5px 11px; border-radius: 8px; transition: .12s; }
+             padding: 6px 13px; border-radius: 999px; transition: .12s; }
   .rawlink:hover { border-color: var(--accent); color: var(--accent); }
 
   footer { margin-top: 40px; padding-top: 18px; border-top: 1px solid var(--border-2);
