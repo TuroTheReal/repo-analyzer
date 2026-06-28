@@ -77,6 +77,7 @@ jobs:
           sarif_file: repo-analyzer-report/report.sarif
 
       - name: Upload report bundle (html/md/json + raw)
+        id: bundle
         if: always()  # keep the artifact even when the gate fails
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
         with:
@@ -88,5 +89,44 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           PR: ${{ github.event.pull_request.number }}
-        # --edit-last + --create-if-none keep a single sticky comment instead of spamming each push
-        run: gh pr comment "$PR" --body-file repo-analyzer-report/report.md --edit-last --create-if-none
+          ARTIFACT_URL: ${{ steps.bundle.outputs.artifact-url }}
+        # --edit-last + --create-if-none keep a single sticky comment instead of spamming each push.
+        # Append a link to the artifact so reviewers can grab the full HTML dashboard + raw output.
+        run: |
+          {
+            cat repo-analyzer-report/report.md
+            printf '\n---\n'
+            printf '📊 **Full HTML dashboard + raw scanner output**: download the **repo-analyzer-report** artifact from [this run](%s).\n' "$ARTIFACT_URL"
+          } > /tmp/pr-comment.md
+          gh pr comment "$PR" --body-file /tmp/pr-comment.md --edit-last --create-if-none
+
+      # --- Demo report for GitHub Pages (main only) ---
+      # Scans the deliberately-vulnerable demo fixture so the public demo shows
+      # findings across every domain. Scanners are already installed above.
+      - name: Build the demo report for Pages
+        if: github.ref == 'refs/heads/main'
+        run: |
+          repo-analyzer tests/fixtures/demo-app --no-gate --output-dir _site --format html,json,markdown
+          cp _site/report.html _site/index.html
+      - name: Upload Pages artifact
+        if: github.ref == 'refs/heads/main'
+        uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9  # v5.0.0
+        with:
+          path: _site
+
+  deploy-pages:
+    name: deploy demo to Pages
+    needs: security
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      pages: write      # deploy to Pages
+      id-token: write   # OIDC token the deploy action verifies
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deploy
+        uses: actions/deploy-pages@cd2ce8fcbc39b97be8ca5fce6e763baed58fa128  # v5.0.0
