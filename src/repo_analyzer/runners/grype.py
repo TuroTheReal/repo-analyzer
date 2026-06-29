@@ -32,11 +32,10 @@ class GrypeRunner(Runner):
     binary = "grype"
 
     def run(self, root: Path) -> RunnerResult:
-        stdout = run_command(
-            ["grype", f"dir:{root}", "-o", "json", "-q"],
-            cwd=root,
-            timeout=_TIMEOUT_SECONDS,
-        )
+        cmd = ["grype", f"dir:{root}", "-o", "json", "-q"]
+        for glob in self._skip_globs():
+            cmd += ["--exclude", glob]
+        stdout = run_command(cmd, cwd=root, timeout=_TIMEOUT_SECONDS)
         try:
             data = json.loads(stdout or "{}")
         except json.JSONDecodeError as exc:
@@ -44,9 +43,17 @@ class GrypeRunner(Runner):
 
         findings = list(self._parse(data, root))
         # grype's matches-only output cannot tell "clean" from "no deps", so the
-        # domain is assessed when there are matches or a dependency manifest.
-        assessed = bool(data.get("matches")) or _has_manifests(root)
+        # domain is assessed when there are matches or a (non-skipped) manifest.
+        assessed = bool(data.get("matches")) or self._has_manifests(root)
         return RunnerResult(findings, frozenset({Domain.DEPENDENCIES}) if assessed else frozenset(), raw=stdout)
+
+    def _has_manifests(self, root: Path) -> bool:
+        """A dependency manifest exists outside the skipped paths."""
+        for name in _MANIFESTS:
+            for path in root.rglob(name):
+                if not self._excluded(path, root):
+                    return True
+        return False
 
     def _parse(self, data: dict, root: Path) -> list[Finding]:
         findings: list[Finding] = []
@@ -74,8 +81,3 @@ class GrypeRunner(Runner):
                 )
             )
         return findings
-
-
-def _has_manifests(root: Path) -> bool:
-    """Whether the repo contains any dependency manifest grype understands."""
-    return any(next(root.rglob(name), None) is not None for name in _MANIFESTS)

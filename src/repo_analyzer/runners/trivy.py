@@ -26,11 +26,11 @@ class TrivyConfigRunner(Runner):
     binary = "trivy"
 
     def run(self, root: Path) -> RunnerResult:
-        stdout = run_command(
-            ["trivy", "config", "--format", "json", "--quiet", str(root)],
-            cwd=root,
-            timeout=_TIMEOUT_SECONDS,
-        )
+        cmd = ["trivy", "config", "--format", "json", "--quiet"]
+        for glob in self._skip_globs():
+            cmd += ["--skip-dirs", glob]
+        cmd.append(str(root))
+        stdout = run_command(cmd, cwd=root, timeout=_TIMEOUT_SECONDS)
         try:
             data = json.loads(stdout or "{}")
         except json.JSONDecodeError as exc:

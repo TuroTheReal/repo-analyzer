@@ -49,7 +49,7 @@ class HadolintRunner(Runner):
         seen: set[Path] = set()
         for glob in _GLOBS:
             for path in root.rglob(glob):
-                if path.is_file():
+                if path.is_file() and not self._excluded(path, root):
                     seen.add(path)
         return sorted(seen)
 
