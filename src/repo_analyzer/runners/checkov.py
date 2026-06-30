@@ -9,6 +9,7 @@ additive rather than duplicative; the merger still dedups any that coincide.
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 
 from ..core.finding import Finding, Severity
@@ -25,11 +26,12 @@ class CheckovRunner(Runner):
     binary = "checkov"
 
     def run(self, root: Path) -> RunnerResult:
-        stdout = run_command(
-            ["checkov", "-d", str(root), "-o", "json", "--compact", "--quiet", "--soft-fail"],
-            cwd=root,
-            timeout=_TIMEOUT_SECONDS,
-        )
+        cmd = ["checkov", "-d", str(root), "-o", "json", "--compact", "--quiet", "--soft-fail"]
+        for skip in self.skip_dirs:
+            # --skip-path is a regex on the file path; anchor to segment boundaries
+            # and escape so e.g. ".git" does not also skip ".github".
+            cmd += ["--skip-path", rf"(?:^|/){re.escape(skip)}(?:/|$)"]
+        stdout = run_command(cmd, cwd=root, timeout=_TIMEOUT_SECONDS)
         try:
             data = json.loads(stdout) if stdout.strip() else []
         except json.JSONDecodeError as exc:

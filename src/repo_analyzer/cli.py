@@ -95,12 +95,17 @@ def _is_skipped(file: str | None, skip_dirs: tuple[str, ...]) -> bool:
     return False
 
 
-def _run_scanners(target: Path) -> tuple[list[Finding], set[Domain], list[str], dict[str, str]]:
+def _run_scanners(
+    target: Path, skip_dirs: tuple[str, ...]
+) -> tuple[list[Finding], set[Domain], list[str], dict[str, str]]:
     """Run every available runner.
 
     Returns the findings, the set of domains actually *applicable* (relevant
     files present), the names of the tools that ran, and a {tool: raw_output}
     map (only tools that expose a safe raw report; gitleaks is omitted).
+
+    ``skip_dirs`` is handed to each runner so it excludes those paths *before*
+    scanning, keeping applicability tied to real files (see Runner.__init__).
     """
     findings: list[Finding] = []
     applicable: set[Domain] = set()
@@ -108,7 +113,7 @@ def _run_scanners(target: Path) -> tuple[list[Finding], set[Domain], list[str], 
     raws: dict[str, str] = {}
 
     for runner_cls in ALL_RUNNERS:
-        runner = runner_cls()
+        runner = runner_cls(skip_dirs=skip_dirs)
         if not runner.is_available():
             console.print(f"[dim]skip {runner.name}: binary '{runner.binary}' not on PATH[/dim]")
             continue
@@ -201,7 +206,7 @@ def main(argv: list[str] | None = None) -> int:
 
     output_dir = Path(args.output_dir or config.output_dir).expanduser().resolve()
 
-    findings, applicable, tools, raws = _run_scanners(target)
+    findings, applicable, tools, raws = _run_scanners(target, tuple(config.skip_dirs))
     if not tools:
         console.print(
             "[red]error:[/red] no scanner available. Install at least one of: "

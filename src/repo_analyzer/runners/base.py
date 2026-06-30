@@ -99,9 +99,38 @@ class Runner(ABC):
     #: Binary that must be on PATH for this runner to work.
     binary: str
 
+    def __init__(self, skip_dirs: tuple[str, ...] = ()) -> None:
+        #: Directories excluded *before* scanning, so a runner's applicability
+        #: reflects only real (non-skipped) files: a domain whose only relevant
+        #: files live under a skipped path (e.g. test fixtures) is then reported
+        #: "not assessed" rather than misleadingly "clean".
+        self.skip_dirs = skip_dirs
+
     def is_available(self) -> bool:
         """Whether the underlying tool is installed and on PATH."""
         return shutil.which(self.binary) is not None
+
+    def _skip_globs(self) -> list[str]:
+        """``**/<dir>/**`` glob for each skip dir (for tools taking glob excludes)."""
+        return [f"**/{d}/**" for d in self.skip_dirs]
+
+    def _excluded(self, path: Path, root: Path) -> bool:
+        """True if ``path`` lies under any configured skip dir (segment match).
+
+        Used by runners that discover files themselves (Dockerfiles, manifests)
+        so a fixture-only file does not make a domain look assessed.
+        """
+        try:
+            rel = path.resolve().relative_to(root.resolve()).as_posix()
+        except ValueError:
+            rel = path.as_posix()
+        segments = rel.split("/")
+        for skip in self.skip_dirs:
+            needle = skip.strip("/").split("/")
+            span = len(needle)
+            if any(segments[i:i + span] == needle for i in range(len(segments) - span + 1)):
+                return True
+        return False
 
     @abstractmethod
     def run(self, root: Path) -> RunnerResult:

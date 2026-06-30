@@ -29,6 +29,9 @@ def _make_runner(findings, available=True, raises=False, applicable_domains=froz
         name = "fake"
         binary = "fake"
 
+        def __init__(self, skip_dirs=()):
+            self.skip_dirs = skip_dirs
+
         def is_available(self):
             return available
 
