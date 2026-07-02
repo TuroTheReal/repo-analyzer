@@ -41,6 +41,7 @@ DOMAIN_LABEL: dict[Domain, str] = {
     Domain.DEPENDENCIES: "Dependencies",
     Domain.PIPELINE: "Pipeline",
     Domain.SUPPLY_CHAIN: "Supply chain",
+    Domain.CODE: "Code",
 }
 
 # Which dashboard tab (axis) a domain belongs to.
@@ -49,11 +50,14 @@ AXIS_OF: dict[Domain, str] = {
     Domain.CONTAINER: "project",
     Domain.SECRETS: "project",
     Domain.DEPENDENCIES: "project",
+    Domain.CODE: "project",
     Domain.PIPELINE: "ci",
     Domain.SUPPLY_CHAIN: "repo",
 }
 
-# Domains belonging to the "Project" axis (what the current scanners assess).
+# Domains reported "not assessed" when no relevant files are found. CODE (SAST)
+# is intentionally excluded: it only appears when external SARIF supplies it, and
+# there are always code files, so listing it "not assessed" would mislead.
 PROJECT_DOMAINS: tuple[Domain, ...] = (Domain.IAC, Domain.CONTAINER, Domain.SECRETS, Domain.DEPENDENCIES)
 
 # Deterministic next-step when a tool gives no remediation of its own (no LLM).
@@ -64,6 +68,7 @@ _DOMAIN_HINT: dict[Domain, str] = {
     Domain.CONTAINER: "Apply the Dockerfile best practice from the rule reference.",
     Domain.PIPELINE: "Harden the workflow per the rule guidance.",
     Domain.SUPPLY_CHAIN: "Close the supply-chain gap per the rule guidance.",
+    Domain.CODE: "Fix the flagged code pattern per the rule reference.",
 }
 
 _RING_RADIUS = 54
