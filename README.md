@@ -71,10 +71,24 @@ repo-analyzer <path> \
   [--fail-on critical,high] \
   [--format sarif,markdown,html,json] \
   [--output-dir DIR] \
+  [--sarif FILE] \
   [--no-gate]
 ```
 
 Exit codes: `0` gate passed, `1` gate failed, `2` usage/environment error.
+
+### Grade an external SARIF report
+
+Instead of running the built-in scanners, `--sarif` ingests a SARIF report from
+**any** tool that emits it (Semgrep, CodeQL, Trivy, Snyk, Bandit, MegaLinter...)
+and applies the same normalization, worst-domain grade, gate and report. Findings
+are routed to a domain by the SARIF tool name (unknown tools land in `code`), so
+e.g. a Semgrep report populates the SAST/`code` domain the built-in scanners do not.
+
+```bash
+semgrep --sarif --output sem.sarif .
+repo-analyzer . --sarif sem.sarif        # grade Semgrep's findings (repeatable)
+```
 
 ```bash
 make self           # scan this repo (dogfood)

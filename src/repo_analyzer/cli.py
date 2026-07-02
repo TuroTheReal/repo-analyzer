@@ -21,7 +21,7 @@ from pathlib import Path
 from rich.console import Console
 
 from .config import Config, ConfigError
-from .core import merger, scorer
+from .core import merger, sarif_import, scorer
 from .core.finding import Domain, Finding, Severity
 from .report import Report
 from .reporters import REPORTERS
@@ -155,6 +155,12 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--fail-on", dest="fail_on", help="Comma-separated severities that fail the gate.")
     parser.add_argument("--output-dir", dest="output_dir", help="Directory for the generated reports.")
     parser.add_argument("--config", dest="config", help="Path to a .repo-analyzer.yml (defaults to <target>/.repo-analyzer.yml).")
+    parser.add_argument(
+        "--sarif",
+        action="append",
+        metavar="FILE",
+        help="Grade an external SARIF report instead of running the scanners (repeatable).",
+    )
     parser.add_argument("--no-gate", action="store_true", help="Always exit 0, regardless of findings.")
     parser.add_argument("--quiet", action="store_true", help="Suppress per-runner progress output.")
     return parser
@@ -206,13 +212,26 @@ def main(argv: list[str] | None = None) -> int:
 
     output_dir = Path(args.output_dir or config.output_dir).expanduser().resolve()
 
-    findings, applicable, tools, raws = _run_scanners(target, tuple(config.skip_dirs))
-    if not tools:
-        console.print(
-            "[red]error:[/red] no scanner available. Install at least one of: "
-            "trivy, checkov, gitleaks, grype, hadolint"
-        )
-        return EXIT_ENV_ERROR
+    if args.sarif:
+        try:
+            findings, applicable, tools = sarif_import.import_sarif(
+                [Path(p).expanduser() for p in args.sarif]
+            )
+        except sarif_import.SarifError as exc:
+            console.print(f"[red]error:[/red] {exc}")
+            return EXIT_ENV_ERROR
+        raws = {}
+        if not tools:
+            console.print("[red]error:[/red] no tool runs found in the provided SARIF")
+            return EXIT_ENV_ERROR
+    else:
+        findings, applicable, tools, raws = _run_scanners(target, tuple(config.skip_dirs))
+        if not tools:
+            console.print(
+                "[red]error:[/red] no scanner available. Install at least one of: "
+                "trivy, checkov, gitleaks, grype, hadolint"
+            )
+            return EXIT_ENV_ERROR
 
     # skip_dirs excludes configured paths (vendored deps, fixtures) from BOTH the
     # findings and the grade. A domain a runner actually assessed stays assessed on

@@ -93,6 +93,10 @@ class Domain(Enum):
     DEPENDENCIES = "dependencies"
     PIPELINE = "pipeline"
     SUPPLY_CHAIN = "supply_chain"
+    #: Application-code findings (SAST). Not produced by the built-in runners;
+    #: populated when ingesting external SARIF from tools like Semgrep/CodeQL,
+    #: and the fallback domain for an unrecognised SARIF driver.
+    CODE = "code"
 
 
 @dataclass(frozen=True)
