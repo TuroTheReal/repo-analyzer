@@ -72,6 +72,7 @@ repo-analyzer <path> \
   [--format sarif,markdown,html,json] \
   [--output-dir DIR] \
   [--sarif FILE] \
+  [--audit ssdf] \
   [--no-gate]
 ```
 
@@ -88,6 +89,17 @@ e.g. a Semgrep report populates the SAST/`code` domain the built-in scanners do 
 ```bash
 semgrep --sarif --output sem.sarif .
 repo-analyzer . --sarif sem.sarif        # grade Semgrep's findings (repeatable)
+```
+
+### Compliance coverage (`--audit`)
+
+Beyond the hygiene grade, `--audit ssdf` writes `ssdf-coverage.md`: a per-practice
+gap analysis mapping what was assessed to **NIST SSDF** (SP 800-218) practices
+(e.g. dependency scanning → PW.4, SAST → PW.7, signed releases → PS.2). It is an
+indicative mapping to guide a gap analysis, **not** an official attestation.
+
+```bash
+repo-analyzer . --audit ssdf
 ```
 
 ```bash
