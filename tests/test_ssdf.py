@@ -34,6 +34,22 @@ def test_to_markdown_summarizes_and_flags_gaps():
     assert "PW.4" in md and "PW.7" in md
 
 
+def test_html_shows_ssdf_tab_only_when_audited():
+    from repo_analyzer.core import scorer
+    from repo_analyzer.core.finding import Finding, Severity
+    from repo_analyzer.report import Report
+    from repo_analyzer.reporters import html
+
+    findings = [Finding(rule_id="X", title="t", severity=Severity.LOW, domain=Domain.DEPENDENCIES, tool="grype")]
+    result = scorer.score(findings, {Domain.DEPENDENCIES}, frozenset({Severity.CRITICAL, Severity.HIGH}))
+    base = dict(repo_name="x", target=".", generated_at="now", findings=findings, score=result, tools=["grype"], duplicates_removed=0)
+
+    audited = html.render(Report(**base, ssdf=ssdf.coverage({Domain.DEPENDENCIES})))
+    assert 'data-tab="ssdf"' in audited and 'class="cov"' in audited and "PW.4" in audited
+
+    assert 'data-tab="ssdf"' not in html.render(Report(**base))  # no --audit -> no tab
+
+
 def test_cli_audit_ssdf_writes_coverage_report(tmp_path):
     # A grype run (dependencies domain) -> PW.4 / RV.1 covered.
     sarif = {"runs": [{"tool": {"driver": {"name": "grype"}}, "results": []}]}

@@ -11,6 +11,7 @@ from dataclasses import dataclass, field
 
 from .core.finding import Finding
 from .core.scorer import ScoreResult
+from .core.ssdf import PracticeCoverage
 
 
 @dataclass(frozen=True)
@@ -26,3 +27,5 @@ class Report:
     duplicates_removed: int
     #: Tools whose raw native report was written next to this report (raw/<tool>.json).
     raw_tools: list[str] = field(default_factory=list)
+    #: SSDF practice coverage when ``--audit ssdf`` ran, else None.
+    ssdf: list[PracticeCoverage] | None = None

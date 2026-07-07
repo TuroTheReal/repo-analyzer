@@ -246,6 +246,7 @@ def main(argv: list[str] | None = None) -> int:
     findings = [f for f in findings if not _is_skipped(f.file, config.skip_dirs)]
     merged = merger.merge(findings)
     result = scorer.score(merged.findings, applicable, fail_on)
+    ssdf_rows = ssdf.coverage({d.domain for d in result.domains}) if args.audit == "ssdf" else None
 
     report = Report(
         repo_name=target.name,
@@ -256,6 +257,7 @@ def main(argv: list[str] | None = None) -> int:
         tools=tools,
         duplicates_removed=merged.duplicates_removed,
         raw_tools=sorted(raws),
+        ssdf=ssdf_rows,
     )
 
     try:
@@ -271,10 +273,9 @@ def main(argv: list[str] | None = None) -> int:
         raw_dir.mkdir(exist_ok=True)
         for tool, content in raws.items():
             (raw_dir / f"{tool}.json").write_text(content, encoding="utf-8")
-    if args.audit == "ssdf":
-        assessed = {d.domain for d in result.domains}
+    if ssdf_rows is not None:
         (output_dir / "ssdf-coverage.md").write_text(
-            ssdf.to_markdown(ssdf.coverage(assessed), report.repo_name), encoding="utf-8"
+            ssdf.to_markdown(ssdf_rows, report.repo_name), encoding="utf-8"
         )
         console.print(f"[dim]SSDF coverage written to {output_dir / 'ssdf-coverage.md'}[/dim]")
     console.print(f"[dim]reports written to {output_dir}[/dim]")

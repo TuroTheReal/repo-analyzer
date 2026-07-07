@@ -170,6 +170,23 @@ def build_context(report: Report) -> dict:
             "findings": sc.findings,
         }
 
+    # SSDF coverage (only when --audit ssdf ran): per-practice gap analysis.
+    ssdf_ctx = None
+    if report.ssdf is not None:
+        ssdf_ctx = {
+            "covered": sum(1 for row in report.ssdf if row.covered),
+            "total": len(report.ssdf),
+            "rows": [
+                {
+                    "id": row.practice.id,
+                    "title": row.practice.title,
+                    "covered_by": [DOMAIN_LABEL.get(d, d.value) for d in row.covered_by],
+                    "covered": row.covered,
+                }
+                for row in report.ssdf
+            ],
+        }
+
     groups = []
     for sev in SEVERITY_ORDER:
         items = [f for f in report.findings if f.severity is sev]
@@ -218,6 +235,7 @@ def build_context(report: Report) -> dict:
         "grade_color": grade_color(score.grade),
         "grade_caption": grade_caption(score.grade),
         "supply_chain": supply_chain,
+        "ssdf": ssdf_ctx,
         "passed": score.passed,
         "gate_status": "PASSED" if score.passed else "FAILED",
         "fail_on": ", ".join(sorted(s.value for s in score.fail_on)),

@@ -170,6 +170,13 @@ _TEMPLATE = _ENV.from_string(
              padding: 6px 13px; border-radius: 999px; transition: .12s; }
   .rawlink:hover { border-color: var(--accent); color: var(--accent); }
 
+  .cov { width: 100%; border-collapse: collapse; margin-top: 14px; font-size: 13px; }
+  .cov th { text-align: left; color: var(--faint); font-weight: 600; font-size: 10.5px; text-transform: uppercase;
+            letter-spacing: .05em; padding: 8px 12px; border-bottom: 1px solid var(--border-2); }
+  .cov td { padding: 10px 12px; border-bottom: 1px solid var(--border-2); color: var(--muted); vertical-align: top; }
+  .cov tr.ok td:last-child { color: #2fdca5; font-weight: 600; white-space: nowrap; }
+  .cov tr.gap td:last-child { color: #ff7a5c; font-weight: 600; white-space: nowrap; }
+
   footer { margin-top: 40px; padding-top: 18px; border-top: 1px solid var(--border-2);
            color: var(--faint); font-size: 12px; display: flex; justify-content: space-between; flex-wrap: wrap; gap: 8px; }
 
@@ -237,6 +244,7 @@ _TEMPLATE = _ENV.from_string(
     <div class="tab active" data-tab="project">App &amp; Infra<span class="n">{{ project_cards | length }}</span></div>
     <div class="tab" data-tab="ci">CI/CD<span class="n">{{ ci_cards | length }}</span></div>
     <div class="tab" data-tab="repo">Supply chain<span class="n">{{ (repo_cards | length) if supply_chain else 'n/a' }}</span></div>
+    {% if ssdf %}<div class="tab" data-tab="ssdf">SSDF<span class="n">{{ ssdf.covered }}/{{ ssdf.total }}</span></div>{% endif %}
   </div>
 
   <section data-panel="project">
@@ -292,6 +300,26 @@ _TEMPLATE = _ENV.from_string(
     <div class="empty"><div class="big">Supply-chain posture</div>OpenSSF Scorecard scores the repo's governance &amp; supply chain (branch protection, signed releases, pinned dependencies, token permissions...). It inspects the remote GitHub repo, so it runs in CI on a GitHub repository and is not assessed for a local folder scan. Advisory: shown as a header badge, excluded from the grade.</div>
     {% endif %}
   </section>
+
+  {% if ssdf %}
+  <section data-panel="ssdf" style="display:none">
+    <div class="verdict">{{ ssdf.covered }}/{{ ssdf.total }} NIST SSDF practices covered</div>
+    <p class="note">Indicative mapping to <b>NIST SP 800-218</b> to guide a gap analysis, not an official attestation.</p>
+    <table class="cov">
+      <thead><tr><th>Practice</th><th>What it asks</th><th>Covered by</th><th>Status</th></tr></thead>
+      <tbody>
+        {% for row in ssdf.rows %}
+        <tr class="{{ 'ok' if row.covered else 'gap' }}">
+          <td class="mono">{{ row.id }}</td>
+          <td>{{ row.title }}</td>
+          <td>{{ row.covered_by | join(', ') if row.covered_by else '—' }}</td>
+          <td>{{ '✓ covered' if row.covered else '✗ gap' }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </section>
+  {% endif %}
 
   {% if raw_tools %}
   <section class="rawbox">
