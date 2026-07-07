@@ -21,7 +21,7 @@ from pathlib import Path
 from rich.console import Console
 
 from .config import Config, ConfigError
-from .core import merger, sarif_import, scorer
+from .core import merger, sarif_import, scorer, ssdf
 from .core.finding import Domain, Finding, Severity
 from .report import Report
 from .reporters import REPORTERS
@@ -161,6 +161,11 @@ def _build_parser() -> argparse.ArgumentParser:
         metavar="FILE",
         help="Grade an external SARIF report instead of running the scanners (repeatable).",
     )
+    parser.add_argument(
+        "--audit",
+        choices=["ssdf"],
+        help="Also write a compliance coverage report for the given framework (currently: ssdf).",
+    )
     parser.add_argument("--no-gate", action="store_true", help="Always exit 0, regardless of findings.")
     parser.add_argument("--quiet", action="store_true", help="Suppress per-runner progress output.")
     return parser
@@ -266,6 +271,12 @@ def main(argv: list[str] | None = None) -> int:
         raw_dir.mkdir(exist_ok=True)
         for tool, content in raws.items():
             (raw_dir / f"{tool}.json").write_text(content, encoding="utf-8")
+    if args.audit == "ssdf":
+        assessed = {d.domain for d in result.domains}
+        (output_dir / "ssdf-coverage.md").write_text(
+            ssdf.to_markdown(ssdf.coverage(assessed), report.repo_name), encoding="utf-8"
+        )
+        console.print(f"[dim]SSDF coverage written to {output_dir / 'ssdf-coverage.md'}[/dim]")
     console.print(f"[dim]reports written to {output_dir}[/dim]")
 
     _print_summary(report)
