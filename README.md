@@ -12,9 +12,10 @@ tool for full coverage.
 
 **Live demo dashboard:** https://turothereal.github.io/repo-analyzer/ (auto-regenerated on each push to `main`, scanning a deliberately-vulnerable fixture).
 
-> **Status: rebuild in progress.** The tool was rewritten from a custom scanner
-> into a thin orchestrator. Milestone 1 (below) is functional; the rest is on
-> the roadmap. This README only documents what actually works today.
+> **Status:** the tool was rewritten from a custom scanner into a thin
+> orchestrator. Milestones M1 to M5 and the supply-chain domain are done (see
+> Roadmap), then `--sarif` ingest and `--audit ssdf`. This README only documents
+> what actually works today.
 
 ## Philosophy
 
@@ -28,9 +29,9 @@ layers that add value and barely change:
 - **reporting** to SARIF / Markdown / HTML / JSON,
 - the **gate** (process exit code).
 
-## What works today (M1 + M2)
+## What works today
 
-Five scanners, each optional (skipped if its binary is absent), normalized into
+Built-in scanners, each optional (skipped if its binary is absent), normalized into
 one model and one grade:
 
 | Domain | Tool | Covers |
@@ -40,6 +41,9 @@ one model and one grade:
 | Dependencies | **grype** | known CVEs in package manifests |
 | Secrets | **gitleaks** | hardcoded credentials (value never stored) |
 | Container | **hadolint** | Dockerfile best practices |
+| Pipeline | **zizmor** | GitHub Actions workflow security |
+| Pipeline | **actionlint** | GitHub Actions workflow lint |
+| Supply chain | **OpenSSF Scorecard** | repository posture; CI-only (GitHub API), advisory: capped at Medium, excluded from the headline grade |
 
 - Unified, deduplicated findings with a 0-100 score and A+..F grade (computed
   only over the domains that were actually scanned).
